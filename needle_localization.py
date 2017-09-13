@@ -66,7 +66,7 @@ def main():
 	ax = fig.add_subplot(111, projection='3d')
 	plt.axis('equal')
 
-	output_path = './insertion_' + time.strftime("%Y_%m_%d_%H_%M_%S")
+	output_path = './data/insertion_' + time.strftime("%Y_%m_%d_%H_%M_%S")
 	print(output_path)
 
 
