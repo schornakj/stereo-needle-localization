@@ -17,6 +17,26 @@ import matplotlib.pyplot as plt
 import struct
 from mpl_toolkits.mplot3d import Axes3D
 import pylab as pl
+import argparse
+import xml.etree.ElementTree as ET
+
+parser = argparse.ArgumentParser(description='Do 3D localization of a needle tip using dense optical flow.')
+parser.add_argument('--use_connection', action='store_true', help='Attempt to connect to the robot control computer.')
+# parser.add_argument('--send_messages', action='store_true', help='Send out OpenIGTLink transforms for the delta between the needle tip and the target.')
+parser.add_argument('--use_recorded_video', action='store_true', help='Load and process video from file, instead of trying to get live video from webcams.')
+parser.add_argument('--load_video_path', type=str, nargs=1, default='./data/test', help='Path for video to load if --use_recorded_video is specified.')
+parser.add_argument('--save_video', action='store_true', help='Save input and output video streams for diagnostic or archival purposes.')
+
+args = parser.parse_args()
+globals().update(vars(args))
+
+tree = ET.parse('config.xml')
+root = tree.getroot()
+
+ip_address = str(root.find("ip").text)
+port = int(root.find("port").text)
+output_dir = str(root.find("output_dir").text)
+output_prefix = str(root.find("prefix").text)
 
 TARGET_TOP = (int(258),int(246))
 TARGET_SIDE = (int(261),int(230))
@@ -27,13 +47,7 @@ TARGET_SIDE = (int(261),int(230))
 ESTIMATE_TOP = (int(200), int(200))
 ESTIMATE_SIDE = (int(200), int(200))
 
-USE_CONNECTION = False
 SEND_MESSAGES = False
-USE_LIVE_VIDEO = True
-RECORD_VIDEO = True
-USE_TRIANGULATION = True
-CROP = False
-USE_KALMAN_FILTER = False
 
 MAG_THRESHOLD = 10
 FRAME_THRESHOLD = 5
@@ -46,10 +60,7 @@ STATE_NO_DATA = 3
 STATE = STATE_NO_TARGET_POINTS
 
 def main():
-	global USE_CONNECTION
-	global USE_LIVE_VIDEO
 	global SEND_MESSAGES
-	global CROP
 	global STATE
 
 	camera_top_expected_heading = 180
@@ -60,21 +71,18 @@ def main():
 
 	offset_px = 36.56
 
-	crop_range = (60, 30)
-
 	fig = plt.figure()
 	ax = fig.add_subplot(111, projection='3d')
 	plt.axis('equal')
 
-	output_path = './data/insertion_' + time.strftime("%Y_%m_%d_%H_%M_%S")
+	output_path =  output_dir + output_prefix + '_' + time.strftime("%Y_%m_%d_%H_%M_%S")
 	print(output_path)
 
-
-	ip_address = '192.168.0.103'
-	port = 18944
+	# ip_address = '192.168.0.103'
+	# port = 18944
 
 	s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-	if USE_CONNECTION:
+	if use_connection:
 		print('Connecting to ' + ip_address + ' port ' + str(port) + '...')
 		s.connect((ip_address, port))
 
@@ -83,7 +91,7 @@ def main():
 	cv2.waitKey(100)
 
 
-	if USE_LIVE_VIDEO:
+	if not use_recorded_video:
 		# For both cameras, turn off autofocus and set the same absolute focal depth the one used during calibration.
 		bashCommand = 'v4l2-ctl -d /dev/video1 -c focus_auto=0'
 		process = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
@@ -115,8 +123,8 @@ def main():
 		# cap_side = cv2.VideoCapture('./video/close2/video_2.avi')
 		# cap_top = cv2.VideoCapture('./final insertion 5/output_top.avi')
 		# cap_side = cv2.VideoCapture('./final insertion 5/output_side.avi')
-		cap_top = cv2.VideoCapture('./insertion_2017_04_02_15_24_37 H/output_top.avi')
-		cap_side = cv2.VideoCapture('./insertion_2017_04_02_15_24_37 H/output_side.avi')
+		cap_top = cv2.VideoCapture(load_video_path + '/output_top.avi')
+		cap_side = cv2.VideoCapture(load_video_path + '/output_side.avi')
 
 	cap_aux = cv2.VideoCapture(-1)
 
@@ -137,13 +145,6 @@ def main():
 
 	ret, camera_top_last_frame = cap_top.read()
 	ret, camera_side_last_frame = cap_side.read()
-
-	if CROP:
-			camera_top_last_frame[:60,:] = [0,0,0]
-			camera_top_last_frame[250:,:] = [0,0,0]
-
-			camera_side_last_frame[:60,:] = [0,0,0]
-			camera_side_last_frame[350:,:] = [0,0,0]
 
 	# camera_top_last_frame = cv2.undistort(camera_top_last_frame, CameraMatrix1, DistCoeffs1)
 	# camera_side_last_frame = cv2.undistort(camera_side_last_frame, CameraMatrix2, DistCoeffs2)
@@ -222,14 +223,6 @@ def main():
 		ret, aux_frame = cap_aux.read()
 
 
-		if CROP:
-			camera_top_current_frame[:60,:] = [0,0,0]
-			camera_top_current_frame[350:,:] = [0,0,0]
-
-			camera_side_current_frame[:60,:] = [0,0,0]
-			camera_side_current_frame[350:,:] = [0,0,0]
-
-
 		camera_top_height, camera_top_width, channels = camera_top_current_frame.shape
 
 		camera_side_height, camera_side_width, channels = camera_side_current_frame.shape
@@ -305,7 +298,7 @@ def main():
 		camera_side_with_marker = draw_tip_path(camera_side_with_marker, side_path)
 
 		# Send the message to the needle guidance robot controller
-		if USE_CONNECTION and SEND_MESSAGES:
+		if use_connection and SEND_MESSAGES:
 			s.send(compose_OpenIGTLink_message(delta_tform))
 
 		cv2.imshow('Camera Top',camera_top_current_frame)
