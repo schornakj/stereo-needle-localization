@@ -17,10 +17,10 @@ import matplotlib.pyplot as plt
 import struct
 from mpl_toolkits.mplot3d import Axes3D
 import pylab as pl
-from pykalman import KalmanFilter
+# from pykalman import KalmanFilter
 
-TARGET_TOP = (int(260),int(240))
-TARGET_SIDE = (int(262),int(232))
+TARGET_TOP = (int(258),int(246))
+TARGET_SIDE = (int(261),int(230))
 
 # TARGET_TOP = (int(281),int(228))
 # TARGET_SIDE = (int(262),int(272))
@@ -30,7 +30,7 @@ ESTIMATE_SIDE = (int(200), int(200))
 
 USE_CONNECTION = False
 SEND_MESSAGES = False
-USE_LIVE_VIDEO = False
+USE_LIVE_VIDEO = True
 RECORD_VIDEO = True
 USE_TRIANGULATION = True
 CROP = False
@@ -45,6 +45,485 @@ STATE_SEND_DATA = 2
 STATE_NO_DATA = 3
 
 STATE = STATE_NO_TARGET_POINTS
+
+def main():
+	global USE_CONNECTION
+	global USE_LIVE_VIDEO
+	global SEND_MESSAGES
+	global CROP
+	global STATE
+
+
+
+
+	camera_top_expected_heading = 180
+	camera_side_expected_heading = 180
+
+
+
+	# [-52, 38, 120]
+	# [-46, 12, 86]
+	# [-52, 33, 203]
+	# [-53, 28, 165]
+
+	# [74, 36, 152]
+
+	R_top = 0.16992 # mm/px
+	R_side = 0.1864 # mm/px
+
+	offset_px = 36.56
+
+	crop_range = (60, 30)
+
+	fig = plt.figure()
+	ax = fig.add_subplot(111, projection='3d')
+	plt.axis('equal')
+
+	output_path = './insertion_' + time.strftime("%Y_%m_%d_%H_%M_%S")
+	print(output_path)
+
+
+	ip_address = '192.168.0.103'
+	port = 18944
+
+	s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+	if USE_CONNECTION:
+		print('Connecting to ' + ip_address + ' port ' + str(port) + '...')
+		s.connect((ip_address, port))
+
+	bashCommand = 'mkdir -p ' + output_path 
+	process4 = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
+	cv2.waitKey(100)
+
+	if USE_LIVE_VIDEO:
+		# For both cameras, turn off autofocus and set the same absolute focal depth the one used during calibration.
+		bashCommand = 'v4l2-ctl -d /dev/video1 -c focus_auto=0'
+		process = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
+		cv2.waitKey(100)
+		bashCommand = 'v4l2-ctl -d /dev/video1 -c focus_absolute=20'
+		process1 = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
+		cv2.waitKey(100)
+		bashCommand = 'v4l2-ctl -d /dev/video2 -c focus_auto=0'
+		process2 = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
+		cv2.waitKey(100)
+		bashCommand = 'v4l2-ctl -d /dev/video2 -c focus_absolute=40'
+		process3 = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
+		cv2.waitKey(100)
+
+		bashCommand = 'v4l2-ctl -d /dev/video3 -c focus_auto=0'
+		process5 = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
+		cv2.waitKey(100)
+		bashCommand = 'v4l2-ctl -d /dev/video3 -c focus_absolute=60'
+		process6 = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
+		cv2.waitKey(100)
+		# bashCommand = 'mkdir /insertion_' + time.strftime("%Y/%m/%d") + '_' + time.strftime("%H:%M:%S")
+	
+
+		cap_top = cv2.VideoCapture(1) # Top camera
+		cap_side = cv2.VideoCapture(2) # Side camera
+	else:
+		# If live video isn't available, use recorded insertion video
+		# cap_top = cv2.VideoCapture('./video/close2/video_1.avi')
+		# cap_side = cv2.VideoCapture('./video/close2/video_2.avi')
+		# cap_top = cv2.VideoCapture('./final insertion 5/output_top.avi')
+		# cap_side = cv2.VideoCapture('./final insertion 5/output_side.avi')
+		cap_top = cv2.VideoCapture('./insertion_2017_04_02_15_24_37 H/output_top.avi')
+		cap_side = cv2.VideoCapture('./insertion_2017_04_02_15_24_37 H/output_side.avi')
+
+	cap_aux = cv2.VideoCapture(-1)
+
+
+	# Load stereo calibration data
+	# calibration = np.load('calibration_close.npz')
+	calibration = np.load('calibration.npz')
+
+	P1 = calibration['P1']
+	P2 = calibration['P2']
+
+	F = calibration['F']
+
+	CameraMatrix1 = calibration['CameraMatrix1']
+	DistCoeffs1 = calibration['DistCoeffs1']
+
+	CameraMatrix2 = calibration['CameraMatrix2']
+	DistCoeffs2 = calibration['DistCoeffs2']  
+
+	ret, camera_top_last_frame = cap_top.read()
+	ret, camera_side_last_frame = cap_side.read()
+
+	if CROP:
+			camera_top_last_frame[:60,:] = [0,0,0]
+			camera_top_last_frame[250:,:] = [0,0,0]
+
+			camera_side_last_frame[:60,:] = [0,0,0]
+			camera_side_last_frame[350:,:] = [0,0,0]
+
+	# camera_top_last_frame = cv2.undistort(camera_top_last_frame, CameraMatrix1, DistCoeffs1)
+	# camera_side_last_frame = cv2.undistort(camera_side_last_frame, CameraMatrix2, DistCoeffs2)
+
+	codecArr = 'LAGS'  # Lagarith Lossless Codec
+	camera_top_height, camera_top_width, channels = camera_top_last_frame.shape
+	camera_side_height, camera_side_width, channels = camera_side_last_frame.shape
+
+	camera_top_roi_size = (200, 350)
+	camera_side_roi_size = (200, 350)
+	# camera_top_roi_size = (camera_top_width, camera_top_height)
+	# camera_side_roi_size = (camera_side_width, camera_side_height)
+
+	camera_top_roi_center = (int(camera_top_width*0.8),camera_top_height/2)
+	camera_top_tip_position = camera_top_roi_center
+	# ESTIMATE_TOP = camera_top_roi_center
+	camera_top_tip_heading = camera_top_expected_heading
+	
+	camera_side_roi_center = (int(camera_side_width*0.8), camera_side_height/2)
+	camera_side_tip_position = camera_side_roi_center
+	# ESTIMATE_SIDE = camera_side_roi_center
+	camera_side_tip_heading = camera_side_expected_heading
+
+	lastDelta = None
+	last3DPosition = None
+
+	trajectory = []
+
+	top_path = []
+	side_path = []
+	
+	fourcc = cv2.VideoWriter_fourcc(*'XVID')
+	 
+	out = cv2.VideoWriter(
+		filename=output_path+'/output_combined.avi',
+		fourcc=fourcc,  # '-1' Ask for an codec; '0' disables compressing.
+		fps=20.0,
+		frameSize=(camera_top_width*2, camera_top_height*2),
+		isColor=True)
+
+	out_top = cv2.VideoWriter(
+		filename=output_path+'/output_top.avi',
+		fourcc=fourcc,  # '-1' Ask for an codec; '0' disables compressing.
+		fps=20.0,
+		frameSize=(camera_top_width, camera_top_height),
+		isColor=True)
+
+	out_side = cv2.VideoWriter(
+		filename=output_path+'/output_side.avi',
+		fourcc=fourcc,  # '-1' Ask for an codec; '0' disables compressing.
+		fps=20.0,
+		frameSize=(camera_side_width, camera_side_height),
+		isColor=True)
+
+	out_flow = 	out = cv2.VideoWriter(
+		filename=output_path+'/output_flow.avi',
+		fourcc=fourcc,  # '-1' Ask for an codec; '0' disables compressing.
+		fps=10.0,
+		frameSize=(camera_top_roi_size[0]*2, camera_top_roi_size[1]*3),
+		isColor=True)
+
+	cv2.namedWindow("Camera Top")
+	cv2.namedWindow("Camera Side")
+
+	cv2.setMouseCallback("Camera Top", get_coords_top)
+	cv2.setMouseCallback("Camera Side", get_coords_side)
+
+	frames_since_update = 0
+
+	# combined = np.zeros((2*camera_top_height, 2*camera_top_width, 3), np.uint8)
+
+	# Kalman filter setup
+	# transition_matrix_2d = [[1, 0, dt, 0], [0, 1, 0, dt], [0, 0, 1, 0], [0, 0, 0, 1]]
+	# measurement_matrix_2d = np.array([[1, 0, 0, 0], [0, 1, 0, 0]], np.float32)
+	# initial_transition_covariance_2d = [[10, 0, 0, 0],[0, 0, 0, 0],[0, 0, 10, 0],[0, 0, 0, 0]]
+
+	# kalman_top = cv2.KalmanFilter(4,2)
+	# kalman_top.measurementMatrix = np.array([[1, 0, 0, 0], [0, 1, 0, 0]], np.float32)
+	# kalman_top.processNoiseCov = np.array([[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1]],np.float32) * 3
+
+	# kalman_side = cv2.KalmanFilter(4,2)
+	# kalman_side.measurementMatrix = np.array([[1, 0, 0, 0], [0, 1, 0, 0]], np.float32)
+	# kalman_side.processNoiseCov = np.array([[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1]],np.float32) * 3
+
+	# top_last_measurement_time = time.clock()
+	# top_last_prediction_time = time.clock()
+
+	# side_last_measurement_time = time.clock()
+	# side_last_prediction_time = time.clock()
+
+
+	while(cap_top.isOpened()):
+		print('Got here')
+		# print('Send:',SEND_MESSAGES)
+		# print_state(STATE)
+
+		if cv2.waitKey(10) == ord('q'):
+			break
+		# elif cv2.waitKey(10) == ord('a'):
+		# 	print('Start Logging')
+  #  			SEND_MESSAGES = True
+  #  		elif cv2.waitKey(10) == ord('s'):
+  #  			print('Stop Logging')
+  #  			SEND_MESSAGES = False
+
+
+		ret, camera_top_current_frame = cap_top.read()
+		ret, camera_side_current_frame = cap_side.read()
+		ret, aux_frame = cap_aux.read()
+
+
+		if CROP:
+			camera_top_current_frame[:60,:] = [0,0,0]
+			camera_top_current_frame[350:,:] = [0,0,0]
+
+			camera_side_current_frame[:60,:] = [0,0,0]
+			camera_side_current_frame[350:,:] = [0,0,0]
+
+			# camera_top_current_frame = camera_top_current_frame[40:330,:]
+			# camera_side_current_frame = camera_side_current_frame[60:350,:]
+
+
+		camera_top_height, camera_top_width, channels = camera_top_current_frame.shape
+	
+		camera_side_height, camera_side_width, channels = camera_side_current_frame.shape
+
+		# camera_top_current_frame = cv2.undistort(camera_top_current_frame, CameraMatrix1, DistCoeffs1)
+		# camera_side_current_frame = cv2.undistort(camera_side_current_frame, CameraMatrix2, DistCoeffs2)
+		
+		# camera_top_farneback_parameters = (0.5, 3, 6, 5, 5, 1.2, 0)
+		# camera_side_farneback_parameters = (0.5, 3, 6, 5, 5, 1.2, 0)
+
+		# camera_top_farneback_parameters = (0.5, 2, 8, 3, 5, 1.2, 0)
+		# camera_side_farneback_parameters = (0.5, 2, 8, 3, 5, 1.2, 0)
+		camera_top_farneback_parameters = (0.5, 4, 10, 5, 5, 1.2, 0)
+		camera_side_farneback_parameters = (0.5, 4, 10, 5, 5, 1.2, 0)
+		# scale, levels, window, iterations, poly_n, poly_sigma, flags        
+				
+		camera_top_new_tip_position, camera_top_new_tip_heading, camera_top_new_roi_center, camera_top_bgr = get_tip_2D_position(camera_top_current_frame, camera_top_last_frame, camera_top_roi_center, camera_top_roi_size, camera_top_expected_heading, camera_top_farneback_parameters)
+		camera_top_roi_center = camera_top_new_roi_center
+
+		camera_side_new_tip_position, camera_side_new_tip_heading, camera_side_new_roi_center, camera_side_bgr = get_tip_2D_position(camera_side_current_frame, camera_side_last_frame, camera_side_roi_center, camera_side_roi_size, camera_side_expected_heading, camera_side_farneback_parameters)
+		camera_side_roi_center = camera_side_new_roi_center
+
+		# if USE_KALMAN_FILTER:
+		# 	if camera_top_new_tip_position is not None:
+		# 		dt = time.clock() - top_last_measurement_time
+		# 		kalman_top.transitionMatrix = np.array([[1, 0, dt, 0], [0, 1, 0, dt], [0, 0, 1, 0], [0, 0, 0, 1]], np.float32)
+		# 		kalman_top.correct(np.array(camera_top_new_tip_position, np.float32))
+		# 		update = kalman_top.predict()
+		# 		camera_top_tip_position = (update[0], update[1])
+		# 		top_last_measurement_time = time.clock()
+		# 		top_last_prediction_time = time.clock()
+		# 	else:
+		# 		dt = time.clock() - top_last_prediction_time
+		# 		kalman_top.transitionMatrix = np.array([[1, 0, dt, 0], [0, 1, 0, dt], [0, 0, 1, 0], [0, 0, 0, 1]], np.float32)
+		# 		update = kalman_top.predict()
+		# 		camera_top_tip_position = (update[0], update[1])
+
+		# 	if camera_side_new_tip_position is not None:
+		# 		dt = time.clock() - side_last_measurement_time
+		# 		kalman_side.transitionMatrix = np.array([[1, 0, dt, 0], [0, 1, 0, dt], [0, 0, 1, 0], [0, 0, 0, 1]], np.float32)
+		# 		kalman_side.correct(np.array(camera_side_new_tip_position, np.float32))
+		# 		update = kalman_side.predict()
+		# 		camera_side_tip_position = (update[0], update[1])
+		# 		side_last_measurement_time = time.clock()
+		# 		side_last_prediction_time = time.clock()
+		# 	else:
+		# 		dt = time.clock() - side_last_prediction_time
+		# 		kalman_side.transitionMatrix = np.array([[1, 0, dt, 0], [0, 1, 0, dt], [0, 0, 1, 0], [0, 0, 0, 1]], np.float32)
+		# 		update = kalman_side.predict()
+		# 		camera_side_tip_position = (update[0], update[1])
+
+		# else:
+		if camera_top_new_tip_position is not None:
+			camera_top_tip_position = camera_top_new_tip_position
+		if camera_side_new_tip_position is not None:
+			camera_side_tip_position = camera_side_new_tip_position
+
+		if camera_top_new_tip_heading is not None:
+				camera_top_tip_heading = camera_top_new_tip_heading
+		if camera_side_new_tip_heading is not None:
+			camera_side_tip_heading = camera_side_new_tip_heading
+
+		camera_top_with_marker = draw_tip_marker(camera_top_current_frame, camera_top_roi_center, camera_top_roi_size, camera_top_tip_position, camera_top_tip_heading)
+		camera_top_with_marker = draw_target_marker(camera_top_with_marker, TARGET_TOP)
+
+		camera_side_with_marker = draw_tip_marker(camera_side_current_frame, camera_side_roi_center, camera_side_roi_size, camera_side_tip_position, camera_side_tip_heading)
+		camera_side_with_marker = draw_target_marker(camera_side_with_marker, TARGET_SIDE)
+
+		# triangulatePoints expects matrices of floats, so we need to rebuild the tip coordinates as float tuples instead of int tuples
+		camera_top_tip_float = (float(camera_top_tip_position[0]), float(camera_top_tip_position[1]))
+		camera_side_tip_float = (float(camera_side_tip_position[0]), float(camera_side_tip_position[1]))
+
+		target_top_float = (float(TARGET_TOP[0]), float(TARGET_TOP[1]))
+		target_side_float = (float(TARGET_SIDE[0]), float(TARGET_SIDE[1]))
+
+
+
+		# print('Camera Top tip:', camera_top_tip_float)
+		# print('Camera Side tip:', camera_side_tip_float)
+
+
+		# if USE_TRIANGULATION:
+			# Fancy (but currently troublesome) 3D disparity reconstruction
+		tip3D_homogeneous = cv2.triangulatePoints(P1, P2, np.array(camera_top_tip_float).reshape(2,-1), np.array(camera_side_tip_float).reshape(2,-1))
+		# print('Homogeneous Position: ' + str(tip3D_homogeneous))
+		tip3D = (tip3D_homogeneous/tip3D_homogeneous[3])[0:3]
+		# print('3D position: ' + str(tip3D))
+
+		target3D_homogeneous = cv2.triangulatePoints(P1, P2, np.array(target_top_float).reshape(2,-1), np.array(target_side_float).reshape(2,-1))
+		target3D = (target3D_homogeneous/target3D_homogeneous[3])[0:3]
+
+
+		# else:
+		# 	# janky linear conversion from pixel coordinates to metric world coordinates
+		# 	tip3D = linear_to_3D(camera_top_tip_float, camera_side_tip_float, R_top, R_side, offset_px)
+		# 	target3D = linear_to_3D(TARGET_TOP, TARGET_SIDE, R_top, R_side, offset_px)
+
+		delta = target3D - tip3D
+		delta_tform = transform_to_robot_coords(delta)
+
+		# print('Tip: ' + str(tip3D))
+		# if not is_within_bounds(tip3D):
+		# 	print('3D tip position out of bounds')
+		# print('Target: ' + str(target3D))
+		# if not is_within_bounds(target3D):
+		# 	print('Target location out of bounds')
+		# print('Target tform: ' + str(transform_to_robot_coords(target3D)))
+		# print('Delta: ' + str(delta))
+		# print('Delta tform: ' + str(transform_to_robot_coords(delta)))
+
+		magnitude = None
+
+		if lastDelta is not None:
+			if not np.array_equal(delta, lastDelta):
+				frames_since_update = 0
+				magnitude = np.linalg.norm(delta - lastDelta)
+				if magnitude <= MAG_THRESHOLD and frames_since_update <= FRAME_THRESHOLD: # and is_within_bounds(target3D) and is_within_bounds(tip3D):
+					SEND_MESSAGES = True			
+			else:
+				SEND_MESSAGES = False
+				frames_since_update+=1
+			SEND_MESSAGES = True
+		# print('Frames:', str(frames_since_update))
+		# print('Mag: ' + str(magnitude))
+
+
+		if SEND_MESSAGES and not np.array_equal(tip3D, last3DPosition):
+			print('Target: ' + str(target3D))
+			print('Delta: ' + str(delta))
+
+			print('Target tform: ' + str(transform_to_robot_coords(target3D)))
+			print('Delta tform: ' + str(transform_to_robot_coords(delta)))
+
+			trajectory.append(transform_to_robot_coords(delta))
+			top_path.append(camera_top_tip_float)
+			side_path.append(camera_side_tip_float)
+
+		# print('Delta tform: ' + str(transform_to_robot_coords(delta)))
+
+		camera_top_with_marker = draw_tip_path(camera_top_with_marker, top_path)
+		camera_side_with_marker = draw_tip_path(camera_side_with_marker, side_path)
+
+		# Package the position transform into the OpenIGTLink format
+		# body = struct.pack('!12f', 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, float(delta_tform[0]), float(delta_tform[1]), float(delta_tform[2]))
+		# bodysize = 48
+		# message = struct.pack('!H12s20sIIQQ', 1, str('TRANSFORM'), str('SIMULATOR'), int(time.time()), 0, bodysize, 0) + body
+	   
+		# Send the message to the needle guidance robot controller
+		if USE_CONNECTION and SEND_MESSAGES: #  and STATE == STATE_SEND_DATA:
+			# s.send(message)
+			s.send(compose_OpenIGTLink_message(delta_tform))
+
+
+		# target_epiline = cv2.computeCorrespondEpilines(np.array(TARGET_TOP).reshape(-1,1,2), 1, F)
+		# camera_side_with_marker = drawlines(camera_side_with_marker, target_epiline)
+
+		# target_epiline = cv2.computeCorrespondEpilines(np.array(TARGET_SIDE).reshape(-1,1,2), 2, F)
+		# camera_top_with_marker = drawlines(camera_top_with_marker, target_epiline)
+
+		# target_epiline = cv2.computeCorrespondEpilines(np.array(camera_top_tip_position).reshape(-1,1,2), 1, F)
+		# camera_side_with_marker = drawlines(camera_side_with_marker, target_epiline)
+
+		# target_epiline = cv2.computeCorrespondEpilines(np.array(camera_side_tip_position).reshape(-1,1,2), 2, F)
+		# camera_top_with_marker = drawlines(camera_top_with_marker, target_epiline)
+
+		# cv2.imshow('Camera Top',camera_top_with_marker)
+		# cv2.imshow('Camera Side',camera_side_with_marker)
+
+		cv2.imshow('Camera Top',camera_top_current_frame)
+		cv2.imshow('Camera Side',camera_side_current_frame)
+		
+		cv2.imshow('Camera Top bgr', camera_top_bgr)
+		cv2.imshow('Camera Side bgr', camera_side_bgr)
+
+		font = cv2.FONT_HERSHEY_DUPLEX
+		text_color = (0,255,0)
+		data_frame = np.zeros_like(camera_top_with_marker)
+		cv2.putText(data_frame, 'Delta: ' + make_data_string(transform_to_robot_coords(delta)), (10, 50), font, 1, text_color)
+		cv2.putText(data_frame, 'Target: ' + make_data_string(transform_to_robot_coords(target3D)), (10, 100), font, 1, text_color)
+		cv2.putText(data_frame, 'Tip: ' + make_data_string(transform_to_robot_coords(tip3D)), (10, 150), font, 1, text_color)
+		cv2.putText(data_frame, 'Top  2D: ' + str(camera_top_tip_position[0]) + ' ' + str(camera_top_tip_position[1]), (10, 200), font, 1, text_color)
+		cv2.putText(data_frame, 'Side 2D: ' + str(camera_side_tip_position[0]) + ' ' + str(camera_side_tip_position[1]), (10, 250), font, 1, text_color)
+
+		if aux_frame is not None:
+			combined2 = np.concatenate((data_frame, aux_frame), axis=0)
+		else:
+			combined2 = np.concatenate((data_frame, np.zeros_like(data_frame)), axis=0)
+
+		out_top.write(camera_top_current_frame)
+		out_side.write(camera_side_current_frame)
+
+
+		if camera_top_with_marker is not None and camera_side_with_marker is not None:
+			combined1 = np.concatenate((camera_top_with_marker, camera_side_with_marker), axis=0)
+			combined = np.concatenate((combined1, combined2), axis=1)
+
+			combined_flow = np.concatenate((camera_top_bgr, camera_side_bgr), axis=1)
+			# combined[:camera_top_height, :camera_top_width, :] = camera_top_with_marker
+			# combined[camera_top_height:, :camera_top_width, :] = camera_side_with_marker
+			# combined[:, camera_top_width:, :] = (0,0,0)
+			# if aux_frame is not None:
+				# combined[camera_top_height:, camera_top_width:, :] = aux_frame
+			cv2.imshow('Combined', combined)
+			cv2.imshow('Combined Flow', combined_flow)
+			out.write(combined)
+			out_flow.write(combined_flow)
+		
+		camera_top_last_frame = camera_top_current_frame
+		camera_side_last_frame = camera_side_current_frame
+
+		lastDelta = delta
+		last3DPosition = tip3D
+
+		# cv2.waitKey(0)
+	 
+	if s is not None:
+			# combined[camera_top_height:, :camera_top_width, :] = camera_side_with_marke
+			# combined[camera_top_height:, :camera_top_width, :] = camera_side_with_marke
+		s.close()
+
+	cap_top.release()
+	cap_side.release()
+	out.release()
+	out_top.release()
+	out_side.release()
+	out_flow.release()
+	cv2.destroyAllWindows()
+
+	trajectoryArray = np.array(trajectory)
+	print(trajectoryArray)
+
+	ax.scatter(trajectoryArray[:,0], trajectoryArray[:,1], trajectoryArray[:,2], c='r', marker='o')
+
+	ax.set_xlabel('X')
+	ax.set_ylabel('Y')
+	ax.set_zlabel('Z (insertion axis)')
+
+	# print('Trajectory: ', trajectoryArray)
+	np.savetxt(output_path+"/trajectory.csv", trajectoryArray, delimiter=",")
+	np.savez_compressed(output_path+"/trajectory.npz", trajectory=trajectoryArray,top_path=np.array(top_path), side_path=np.array(side_path))
+	# np.savez_compressed("path.npz",top_path=np.array(top_path), side_path=np.array(side_path))
+
+	# ax.scatter(np.array(side_path)[:,0],np.array(side_path)[:,1])
+	# plt.draw()
+	plt.show()
 
 
 def get_tip_2D_position(current_frame, last_frame, roi_center, roi_size, expected_heading, p):  
@@ -292,461 +771,7 @@ def print_state(current_state):
 def make_data_string(data):
 	return '%0.3g, %0.3g, %0.3g' % (data[0], data[1], data[2])
 
-def main():
-	global USE_CONNECTION
-	global USE_LIVE_VIDEO
-	global SEND_MESSAGES
-	global CROP
-	global STATE
 
-	camera_top_expected_heading = 180
-	camera_side_expected_heading = 180
-
-
-
-	# [-52, 38, 120]
-	# [-46, 12, 86]
-	# [-52, 33, 203]
-	# [-53, 28, 165]
-
-	# [74, 36, 152]
-
-	R_top = 0.16992 # mm/px
-	R_side = 0.1864 # mm/px
-
-	offset_px = 36.56
-
-	crop_range = (60, 30)
-
-	fig = plt.figure()
-	ax = fig.add_subplot(111, projection='3d')
-	plt.axis('equal')
-
-	output_path = './insertion_' + time.strftime("%Y_%m_%d_%H_%M_%S")
-	print(output_path)
-
-
-	ip_address = '192.168.0.103'
-	port = 18944
-
-	s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-	if USE_CONNECTION:
-		print('Connecting to ' + ip_address + ' port ' + str(port) + '...')
-		s.connect((ip_address, port))
-
-	bashCommand = 'mkdir -p ' + output_path 
-	process4 = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
-	cv2.waitKey(100)
-
-	if USE_LIVE_VIDEO:
-		# For both cameras, turn off autofocus and set the same absolute focal depth the one used during calibration.
-		bashCommand = 'v4l2-ctl -d /dev/video1 -c focus_auto=0'
-		process = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
-		cv2.waitKey(100)
-		bashCommand = 'v4l2-ctl -d /dev/video1 -c focus_absolute=20'
-		process1 = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
-		cv2.waitKey(100)
-		bashCommand = 'v4l2-ctl -d /dev/video2 -c focus_auto=0'
-		process2 = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
-		cv2.waitKey(100)
-		bashCommand = 'v4l2-ctl -d /dev/video2 -c focus_absolute=40'
-		process3 = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
-		cv2.waitKey(100)
-
-		bashCommand = 'v4l2-ctl -d /dev/video3 -c focus_auto=0'
-		process5 = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
-		cv2.waitKey(100)
-		bashCommand = 'v4l2-ctl -d /dev/video3 -c focus_absolute=40'
-		process6 = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
-		cv2.waitKey(100)
-		# bashCommand = 'mkdir /insertion_' + time.strftime("%Y/%m/%d") + '_' + time.strftime("%H:%M:%S")
-	
-
-		cap_top = cv2.VideoCapture(1) # Top camera
-		cap_side = cv2.VideoCapture(2) # Side camera
-	else:
-		# If live video isn't available, use recorded insertion video
-		# cap_top = cv2.VideoCapture('./video/close2/video_1.avi')
-		# cap_side = cv2.VideoCapture('./video/close2/video_2.avi')
-		# cap_top = cv2.VideoCapture('./final insertion 5/output_top.avi')
-		# cap_side = cv2.VideoCapture('./final insertion 5/output_side.avi')
-		cap_top = cv2.VideoCapture('output_top.avi')
-		cap_side = cv2.VideoCapture('output_side.avi')
-
-	cap_aux = cv2.VideoCapture(3)
-
-
-	# Load stereo calibration data
-	# calibration = np.load('calibration_close.npz')
-	calibration = np.load('calibration.npz')
-
-	P1 = calibration['P1']
-	P2 = calibration['P2']
-
-	F = calibration['F']
-
-	CameraMatrix1 = calibration['CameraMatrix1']
-	DistCoeffs1 = calibration['DistCoeffs1']
-
-	CameraMatrix2 = calibration['CameraMatrix2']
-	DistCoeffs2 = calibration['DistCoeffs2']  
-
-	ret, camera_top_last_frame = cap_top.read()
-	ret, camera_side_last_frame = cap_side.read()
-
-	if CROP:
-			camera_top_last_frame[:60,:] = [0,0,0]
-			camera_top_last_frame[250:,:] = [0,0,0]
-
-			camera_side_last_frame[:60,:] = [0,0,0]
-			camera_side_last_frame[350:,:] = [0,0,0]
-
-	# camera_top_last_frame = cv2.undistort(camera_top_last_frame, CameraMatrix1, DistCoeffs1)
-	# camera_side_last_frame = cv2.undistort(camera_side_last_frame, CameraMatrix2, DistCoeffs2)
-
-	codecArr = 'LAGS'  # Lagarith Lossless Codec
-	camera_top_height, camera_top_width, channels = camera_top_last_frame.shape
-	camera_side_height, camera_side_width, channels = camera_side_last_frame.shape
-
-	camera_top_roi_size = (200, 350)
-	camera_side_roi_size = (200, 350)
-	# camera_top_roi_size = (camera_top_width, camera_top_height)
-	# camera_side_roi_size = (camera_side_width, camera_side_height)
-
-	camera_top_roi_center = (int(camera_top_width*0.8),camera_top_height/2)
-	camera_top_tip_position = camera_top_roi_center
-	# ESTIMATE_TOP = camera_top_roi_center
-	camera_top_tip_heading = camera_top_expected_heading
-	
-	camera_side_roi_center = (int(camera_side_width*0.8), camera_side_height/2)
-	camera_side_tip_position = camera_side_roi_center
-	# ESTIMATE_SIDE = camera_side_roi_center
-	camera_side_tip_heading = camera_side_expected_heading
-
-	lastDelta = None
-	last3DPosition = None
-
-	trajectory = []
-
-	top_path = []
-	side_path = []
-	
-	fourcc = cv2.VideoWriter_fourcc(*'XVID')
-	 
-	out = cv2.VideoWriter(
-		filename=output_path+'/output_combined.avi',
-		fourcc=fourcc,  # '-1' Ask for an codec; '0' disables compressing.
-		fps=20.0,
-		frameSize=(camera_top_width*2, camera_top_height*2),
-		isColor=True)
-
-	out_top = cv2.VideoWriter(
-		filename=output_path+'/output_top.avi',
-		fourcc=fourcc,  # '-1' Ask for an codec; '0' disables compressing.
-		fps=20.0,
-		frameSize=(camera_top_width, camera_top_height),
-		isColor=True)
-
-	out_side = cv2.VideoWriter(
-		filename=output_path+'/output_side.avi',
-		fourcc=fourcc,  # '-1' Ask for an codec; '0' disables compressing.
-		fps=20.0,
-		frameSize=(camera_side_width, camera_side_height),
-		isColor=True)
-
-	cv2.namedWindow("Camera Top")
-	cv2.namedWindow("Camera Side")
-
-	cv2.setMouseCallback("Camera Top", get_coords_top)
-	cv2.setMouseCallback("Camera Side", get_coords_side)
-
-	frames_since_update = 0
-
-	# combined = np.zeros((2*camera_top_height, 2*camera_top_width, 3), np.uint8)
-
-	# Kalman filter setup
-	# transition_matrix_2d = [[1, 0, dt, 0], [0, 1, 0, dt], [0, 0, 1, 0], [0, 0, 0, 1]]
-	# measurement_matrix_2d = np.array([[1, 0, 0, 0], [0, 1, 0, 0]], np.float32)
-	# initial_transition_covariance_2d = [[10, 0, 0, 0],[0, 0, 0, 0],[0, 0, 10, 0],[0, 0, 0, 0]]
-
-	kalman_top = cv2.KalmanFilter(4,2)
-	kalman_top.measurementMatrix = np.array([[1, 0, 0, 0], [0, 1, 0, 0]], np.float32)
-	kalman_top.processNoiseCov = np.array([[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1]],np.float32) * 3
-
-	kalman_side = cv2.KalmanFilter(4,2)
-	kalman_side.measurementMatrix = np.array([[1, 0, 0, 0], [0, 1, 0, 0]], np.float32)
-	kalman_side.processNoiseCov = np.array([[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1]],np.float32) * 3
-
-	top_last_measurement_time = time.clock()
-	top_last_prediction_time = time.clock()
-
-	side_last_measurement_time = time.clock()
-	side_last_prediction_time = time.clock()
-
-
-	while(cap_top.isOpened()):
-		# print('Send:',SEND_MESSAGES)
-		# print_state(STATE)
-
-		if cv2.waitKey(10) == ord('q'):
-			break
-		elif cv2.waitKey(10) == ord('a'):
-			print('Start Logging')
-   			SEND_MESSAGES = True
-   		elif cv2.waitKey(10) == ord('s'):
-   			print('Stop Logging')
-   			SEND_MESSAGES = False
-
-
-		ret, camera_top_current_frame = cap_top.read()
-		ret, camera_side_current_frame = cap_side.read()
-		ret, aux_frame = cap_aux.read()
-
-
-		if CROP:
-			camera_top_current_frame[:60,:] = [0,0,0]
-			camera_top_current_frame[350:,:] = [0,0,0]
-
-			camera_side_current_frame[:60,:] = [0,0,0]
-			camera_side_current_frame[350:,:] = [0,0,0]
-
-			# camera_top_current_frame = camera_top_current_frame[40:330,:]
-			# camera_side_current_frame = camera_side_current_frame[60:350,:]
-
-
-		camera_top_height, camera_top_width, channels = camera_top_current_frame.shape
-	
-		camera_side_height, camera_side_width, channels = camera_side_current_frame.shape
-
-		# camera_top_current_frame = cv2.undistort(camera_top_current_frame, CameraMatrix1, DistCoeffs1)
-		# camera_side_current_frame = cv2.undistort(camera_side_current_frame, CameraMatrix2, DistCoeffs2)
-		
-		# camera_top_farneback_parameters = (0.5, 3, 6, 5, 5, 1.2, 0)
-		# camera_side_farneback_parameters = (0.5, 3, 6, 5, 5, 1.2, 0)
-
-		camera_top_farneback_parameters = (0.5, 2, 8, 3, 5, 1.2, 0)
-		camera_side_farneback_parameters = (0.5, 2, 8, 3, 5, 1.2, 0)
-		# scale, levels, window, iterations, poly_n, poly_sigma, flags        
-				
-		camera_top_new_tip_position, camera_top_new_tip_heading, camera_top_new_roi_center, camera_top_bgr = get_tip_2D_position(camera_top_current_frame, camera_top_last_frame, camera_top_roi_center, camera_top_roi_size, camera_top_expected_heading, camera_top_farneback_parameters)
-		camera_top_roi_center = camera_top_new_roi_center
-
-		camera_side_new_tip_position, camera_side_new_tip_heading, camera_side_new_roi_center, camera_side_bgr = get_tip_2D_position(camera_side_current_frame, camera_side_last_frame, camera_side_roi_center, camera_side_roi_size, camera_side_expected_heading, camera_side_farneback_parameters)
-		camera_side_roi_center = camera_side_new_roi_center
-
-		if USE_KALMAN_FILTER:
-			if camera_top_new_tip_position is not None:
-				dt = time.clock() - top_last_measurement_time
-				kalman_top.transitionMatrix = np.array([[1, 0, dt, 0], [0, 1, 0, dt], [0, 0, 1, 0], [0, 0, 0, 1]], np.float32)
-				kalman_top.correct(np.array(camera_top_new_tip_position, np.float32))
-				update = kalman_top.predict()
-				camera_top_tip_position = (update[0], update[1])
-				top_last_measurement_time = time.clock()
-				top_last_prediction_time = time.clock()
-			else:
-				dt = time.clock() - top_last_prediction_time
-				kalman_top.transitionMatrix = np.array([[1, 0, dt, 0], [0, 1, 0, dt], [0, 0, 1, 0], [0, 0, 0, 1]], np.float32)
-				update = kalman_top.predict()
-				camera_top_tip_position = (update[0], update[1])
-
-			if camera_side_new_tip_position is not None:
-				dt = time.clock() - side_last_measurement_time
-				kalman_side.transitionMatrix = np.array([[1, 0, dt, 0], [0, 1, 0, dt], [0, 0, 1, 0], [0, 0, 0, 1]], np.float32)
-				kalman_side.correct(np.array(camera_side_new_tip_position, np.float32))
-				update = kalman_side.predict()
-				camera_side_tip_position = (update[0], update[1])
-				side_last_measurement_time = time.clock()
-				side_last_prediction_time = time.clock()
-			else:
-				dt = time.clock() - side_last_prediction_time
-				kalman_side.transitionMatrix = np.array([[1, 0, dt, 0], [0, 1, 0, dt], [0, 0, 1, 0], [0, 0, 0, 1]], np.float32)
-				update = kalman_side.predict()
-				camera_side_tip_position = (update[0], update[1])
-
-		else:
-			if camera_top_new_tip_position is not None:
-				camera_top_tip_position = camera_top_new_tip_position
-			if camera_side_new_tip_position is not None:
-				camera_side_tip_position = camera_side_new_tip_position
-
-		if camera_top_new_tip_heading is not None:
-				camera_top_tip_heading = camera_top_new_tip_heading
-		if camera_side_new_tip_heading is not None:
-			camera_side_tip_heading = camera_side_new_tip_heading
-
-		camera_top_with_marker = draw_tip_marker(camera_top_current_frame, camera_top_roi_center, camera_top_roi_size, camera_top_tip_position, camera_top_tip_heading)
-		camera_top_with_marker = draw_target_marker(camera_top_with_marker, TARGET_TOP)
-
-		camera_side_with_marker = draw_tip_marker(camera_side_current_frame, camera_side_roi_center, camera_side_roi_size, camera_side_tip_position, camera_side_tip_heading)
-		camera_side_with_marker = draw_target_marker(camera_side_with_marker, TARGET_SIDE)
-
-		# triangulatePoints expects matrices of floats, so we need to rebuild the tip coordinates as float tuples instead of int tuples
-		camera_top_tip_float = (float(camera_top_tip_position[0]), float(camera_top_tip_position[1]))
-		camera_side_tip_float = (float(camera_side_tip_position[0]), float(camera_side_tip_position[1]))
-
-		target_top_float = (float(TARGET_TOP[0]), float(TARGET_TOP[1]))
-		target_side_float = (float(TARGET_SIDE[0]), float(TARGET_SIDE[1]))
-
-
-
-		# print('Camera Top tip:', camera_top_tip_float)
-		# print('Camera Side tip:', camera_side_tip_float)
-
-
-		# if USE_TRIANGULATION:
-			# Fancy (but currently troublesome) 3D disparity reconstruction
-		tip3D_homogeneous = cv2.triangulatePoints(P1, P2, np.array(camera_top_tip_float).reshape(2,-1), np.array(camera_side_tip_float).reshape(2,-1))
-		# print('Homogeneous Position: ' + str(tip3D_homogeneous))
-		tip3D = (tip3D_homogeneous/tip3D_homogeneous[3])[0:3]
-		# print('3D position: ' + str(tip3D))
-
-		target3D_homogeneous = cv2.triangulatePoints(P1, P2, np.array(target_top_float).reshape(2,-1), np.array(target_side_float).reshape(2,-1))
-		target3D = (target3D_homogeneous/target3D_homogeneous[3])[0:3]
-
-
-		# else:
-		# 	# janky linear conversion from pixel coordinates to metric world coordinates
-		# 	tip3D = linear_to_3D(camera_top_tip_float, camera_side_tip_float, R_top, R_side, offset_px)
-		# 	target3D = linear_to_3D(TARGET_TOP, TARGET_SIDE, R_top, R_side, offset_px)
-
-		delta = target3D - tip3D
-		delta_tform = transform_to_robot_coords(delta)
-
-		# print('Tip: ' + str(tip3D))
-		# if not is_within_bounds(tip3D):
-		# 	print('3D tip position out of bounds')
-		# print('Target: ' + str(target3D))
-		# if not is_within_bounds(target3D):
-		# 	print('Target location out of bounds')
-		# print('Target tform: ' + str(transform_to_robot_coords(target3D)))
-		# print('Delta: ' + str(delta))
-		# print('Delta tform: ' + str(transform_to_robot_coords(delta)))
-
-		magnitude = None
-
-		if lastDelta is not None:
-			if not np.array_equal(delta, lastDelta):
-				frames_since_update = 0
-				magnitude = np.linalg.norm(delta - lastDelta)
-				if magnitude <= MAG_THRESHOLD and frames_since_update <= FRAME_THRESHOLD: # and is_within_bounds(target3D) and is_within_bounds(tip3D):
-					SEND_MESSAGES = True			
-			else:
-				SEND_MESSAGES = False
-				frames_since_update+=1
-			SEND_MESSAGES = True
-		# print('Frames:', str(frames_since_update))
-		# print('Mag: ' + str(magnitude))
-
-
-		if SEND_MESSAGES and not np.array_equal(tip3D, last3DPosition):
-			print('Target: ' + str(target3D))
-			print('Delta: ' + str(delta))
-
-			print('Target tform: ' + str(transform_to_robot_coords(target3D)))
-			print('Delta tform: ' + str(transform_to_robot_coords(delta)))
-
-			trajectory.append(transform_to_robot_coords(delta))
-			top_path.append(camera_top_tip_float)
-			side_path.append(camera_side_tip_float)
-
-		# print('Delta tform: ' + str(transform_to_robot_coords(delta)))
-
-		camera_top_with_marker = draw_tip_path(camera_top_with_marker, top_path)
-		camera_side_with_marker = draw_tip_path(camera_side_with_marker, side_path)
-
-		# Package the position transform into the OpenIGTLink format
-		# body = struct.pack('!12f', 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, float(delta_tform[0]), float(delta_tform[1]), float(delta_tform[2]))
-		# bodysize = 48
-		# message = struct.pack('!H12s20sIIQQ', 1, str('TRANSFORM'), str('SIMULATOR'), int(time.time()), 0, bodysize, 0) + body
-	   
-		# Send the message to the needle guidance robot controller
-		if USE_CONNECTION and SEND_MESSAGES: #  and STATE == STATE_SEND_DATA:
-			# s.send(message)
-			s.send(compose_OpenIGTLink_message(delta_tform))
-
-
-		# target_epiline = cv2.computeCorrespondEpilines(np.array(TARGET_TOP).reshape(-1,1,2), 1, F)
-		# camera_side_with_marker = drawlines(camera_side_with_marker, target_epiline)
-
-		# target_epiline = cv2.computeCorrespondEpilines(np.array(TARGET_SIDE).reshape(-1,1,2), 2, F)
-		# camera_top_with_marker = drawlines(camera_top_with_marker, target_epiline)
-
-		# target_epiline = cv2.computeCorrespondEpilines(np.array(camera_top_tip_position).reshape(-1,1,2), 1, F)
-		# camera_side_with_marker = drawlines(camera_side_with_marker, target_epiline)
-
-		# target_epiline = cv2.computeCorrespondEpilines(np.array(camera_side_tip_position).reshape(-1,1,2), 2, F)
-		# camera_top_with_marker = drawlines(camera_top_with_marker, target_epiline)
-
-		cv2.imshow('Camera Top',camera_top_with_marker)
-		cv2.imshow('Camera Side',camera_side_with_marker)
-		
-		cv2.imshow('Camera Top bgr', camera_top_bgr)
-		cv2.imshow('Camera Side bgr', camera_side_bgr)
-
-		font = cv2.FONT_HERSHEY_DUPLEX
-		text_color = (0,255,0)
-		data_frame = np.zeros_like(camera_top_with_marker)
-		cv2.putText(data_frame, 'Delta: ' + make_data_string(transform_to_robot_coords(delta)), (10, 50), font, 1, text_color)
-		cv2.putText(data_frame, 'Target: ' + make_data_string(transform_to_robot_coords(target3D)), (10, 100), font, 1, text_color)
-		cv2.putText(data_frame, 'Tip: ' + make_data_string(transform_to_robot_coords(tip3D)), (10, 150), font, 1, text_color)
-		cv2.putText(data_frame, 'Top  2D: ' + str(camera_top_tip_position[0]) + ' ' + str(camera_top_tip_position[1]), (10, 200), font, 1, text_color)
-		cv2.putText(data_frame, 'Side 2D: ' + str(camera_side_tip_position[0]) + ' ' + str(camera_side_tip_position[1]), (10, 250), font, 1, text_color)
-
-		if aux_frame is not None:
-			combined2 = np.concatenate((data_frame, aux_frame), axis=0)
-		else:
-			combined2 = np.concatenate((data_frame, np.zeros_like(data_frame)), axis=0)
-
-		out_top.write(camera_top_current_frame)
-		out_side.write(camera_side_current_frame)
-
-
-		if camera_top_with_marker is not None and camera_side_with_marker is not None:
-			combined1 = np.concatenate((camera_top_with_marker, camera_side_with_marker), axis=0)
-			combined = np.concatenate((combined1, combined2), axis=1)
-			# combined[:camera_top_height, :camera_top_width, :] = camera_top_with_marker
-			# combined[camera_top_height:, :camera_top_width, :] = camera_side_with_marker
-			# combined[:, camera_top_width:, :] = (0,0,0)
-			# if aux_frame is not None:
-				# combined[camera_top_height:, camera_top_width:, :] = aux_frame
-			cv2.imshow('Combined', combined)
-			out.write(combined)
-		
-		camera_top_last_frame = camera_top_current_frame
-		camera_side_last_frame = camera_side_current_frame
-
-		lastDelta = delta
-		last3DPosition = tip3D
-	 
-	if s is not None:
-			# combined[camera_top_height:, :camera_top_width, :] = camera_side_with_marke
-			# combined[camera_top_height:, :camera_top_width, :] = camera_side_with_marke
-		s.close()
-
-	cap_top.release()
-	cap_side.release()
-	out.release()
-	out_top.release()
-	out_side.release()
-	cv2.destroyAllWindows()
-
-	trajectoryArray = np.array(trajectory)
-	print(trajectoryArray)
-
-	ax.scatter(trajectoryArray[:,0], trajectoryArray[:,1], trajectoryArray[:,2], c='r', marker='o')
-
-	ax.set_xlabel('X')
-	ax.set_ylabel('Y')
-	ax.set_zlabel('Z (insertion axis)')
-
-	# print('Trajectory: ', trajectoryArray)
-	np.savetxt(output_path+"/trajectory.csv", trajectoryArray, delimiter=",")
-	np.savez_compressed(output_path+"/trajectory.npz", trajectory=trajectoryArray,top_path=np.array(top_path), side_path=np.array(side_path))
-	# np.savez_compressed("path.npz",top_path=np.array(top_path), side_path=np.array(side_path))
-
-	# ax.scatter(np.array(side_path)[:,0],np.array(side_path)[:,1])
-	# plt.draw()
-	plt.show()
 
 if __name__ == '__main__':
 	main()
