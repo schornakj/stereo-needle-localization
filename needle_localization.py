@@ -7,33 +7,28 @@ Created on Feb 7, 2017
 import time
 import numpy as np
 import cv2
-import sys
-import getopt
-import ffmpy
 import math
 import subprocess
 import socket
 import matplotlib.pyplot as plt
 import struct
-from mpl_toolkits.mplot3d import Axes3D
 
 import argparse
 import xml.etree.ElementTree as ET
 from collections import deque
 
+# Parse commang line arguments. These are primarily flags for things likely to change between runs.
 parser = argparse.ArgumentParser(description='Do 3D localization of a needle tip using dense optical flow.')
 parser.add_argument('--use_connection', action='store_true', help='Attempt to connect to the robot control computer.')
-# parser.add_argument('--send_messages', action='store_true', help='Send out OpenIGTLink transforms for the delta between the needle tip and the target.')
 parser.add_argument('--use_recorded_video', action='store_true', help='Load and process video from file, instead of trying to get live video from webcams.')
 parser.add_argument('--load_video_path', type=str, nargs=1, default='./data/test', help='Path for video to load if --use_recorded_video is specified.')
 parser.add_argument('--save_video', action='store_true', help='Save input and output video streams for diagnostic or archival purposes.')
-
 args = parser.parse_args()
 globals().update(vars(args))
 
+# Load xml config file. This is for values that need to be changed but are likely to stay the same for many runs.
 tree = ET.parse('config.xml')
 root = tree.getroot()
-
 ip_address = str(root.find("ip").text)
 port = int(root.find("port").text)
 output_dir = str(root.find("output_dir").text)
@@ -41,9 +36,6 @@ output_prefix = str(root.find("prefix").text)
 
 TARGET_TOP = (int(258),int(246))
 TARGET_SIDE = (int(261),int(230))
-
-# TARGET_TOP = (int(281),int(228))
-# TARGET_SIDE = (int(262),int(272))
 
 ESTIMATE_TOP = (int(200), int(200))
 ESTIMATE_SIDE = (int(200), int(200))
@@ -69,10 +61,6 @@ def main():
     camera_top_expected_heading = 45
     camera_side_expected_heading = 45
 
-    R_top = 0.16992 # mm/px
-    R_side = 0.1864 # mm/px
-
-    offset_px = 36.56
 
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
@@ -80,9 +68,6 @@ def main():
 
     output_path =  output_dir + output_prefix + '_' + time.strftime("%Y_%m_%d_%H_%M_%S")
     print(output_path)
-
-    # ip_address = '192.168.0.103'
-    # port = 18944
 
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     if use_connection:
@@ -92,7 +77,6 @@ def main():
     bashCommand = 'mkdir -p ' + output_path
     process4 = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
     cv2.waitKey(100)
-
 
     if not use_recorded_video:
         # For both cameras, turn off autofocus and set the same absolute focal depth the one used during calibration.
@@ -115,8 +99,6 @@ def main():
         bashCommand = 'v4l2-ctl -d /dev/video3 -c focus_absolute=60'
         process6 = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
         cv2.waitKey(100)
-        # bashCommand = 'mkdir /insertion_' + time.strftime("%Y/%m/%d") + '_' + time.strftime("%H:%M:%S")
-
 
         cap_top = cv2.VideoCapture(1) # Top camera
         cap_side = cv2.VideoCapture(2) # Side camera
@@ -163,12 +145,10 @@ def main():
 
     camera_top_roi_center = (int(camera_top_width*0.8),camera_top_height/2)
     camera_top_tip_position = camera_top_roi_center
-    # ESTIMATE_TOP = camera_top_roi_center
     camera_top_tip_heading = camera_top_expected_heading
 
     camera_side_roi_center = (int(camera_side_width*0.8), camera_side_height/2)
     camera_side_tip_position = camera_side_roi_center
-    # ESTIMATE_SIDE = camera_side_roi_center
     camera_side_tip_heading = camera_side_expected_heading
 
     lastDelta = None
@@ -217,8 +197,6 @@ def main():
 
     frames_since_update = 0
 
-
-
     while(cap_top.isOpened()):
         if cv2.waitKey(10) == ord('q'):
             break
@@ -230,9 +208,6 @@ def main():
         top_frames.append(camera_top_current_frame)
         side_frames.append(camera_side_current_frame)
 
-        camera_top_height, camera_top_width, channels = camera_top_current_frame.shape
-
-        camera_side_height, camera_side_width, channels = camera_side_current_frame.shape
         camera_top_farneback_parameters = (0.5, 4, 10, 5, 5, 1.2, 0)
         camera_side_farneback_parameters = (0.5, 4, 10, 5, 5, 1.2, 0)
         # scale, levels, window, iterations, poly_n, poly_sigma, flags
@@ -331,7 +306,6 @@ def main():
         out_top.write(camera_top_current_frame)
         out_side.write(camera_side_current_frame)
 
-
         if camera_top_with_marker is not None and camera_side_with_marker is not None:
             combined1 = np.concatenate((camera_top_with_marker, camera_side_with_marker), axis=0)
             combined = np.concatenate((combined1, combined2), axis=1)
@@ -357,19 +331,11 @@ def main():
     cv2.destroyAllWindows()
 
     trajectoryArray = np.array(trajectory)
-    # print(trajectoryArray)
-    #
-    # ax.scatter(trajectoryArray[:,0], trajectoryArray[:,1], trajectoryArray[:,2], c='r', marker='o')
-    #
-    # ax.set_xlabel('X')
-    # ax.set_ylabel('Y')
-    # ax.set_zlabel('Z (insertion axis)')
 
     np.savetxt(output_path+"/trajectory.csv", trajectoryArray, delimiter=",")
     np.savez_compressed(output_path+"/trajectory.npz", trajectory=trajectoryArray,top_path=np.array(top_path), side_path=np.array(side_path))
 
     # plt.show()
-
 
 def get_tip_2D_position(frames, roi_center, roi_size, expected_heading, p):
     position = None
@@ -421,10 +387,8 @@ def get_tip_2D_position(frames, roi_center, roi_size, expected_heading, p):
     retract_upper_bound = np.array([heading_retract_upper_bound, 255, max_value])
 
     mask_retract = cv2.inRange(hsv, retract_lower_bound, retract_upper_bound)
-    # mask_retract = cv2.bitwise_or(cv2.inRange(hsv, zero_lower, retract_upper_bound), cv2.inRange(hsv, retract_lower_bound, zero_upper))
 
     mask = cv2.bitwise_or(mask_insert, mask_retract)
-    # mask = mask_insert
 
     kernel = np.ones((7,7),np.uint8)
     erosion = cv2.erode(mask,kernel,iterations = 1)
@@ -438,8 +402,6 @@ def get_tip_2D_position(frames, roi_center, roi_size, expected_heading, p):
     diagnostic[:roi_size[1], :, :] = bgr
     diagnostic[roi_size[1]:2*roi_size[1], :, :] = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
     diagnostic[2*roi_size[1]:, :, :] = cv2.cvtColor(thresh, cv2.COLOR_GRAY2BGR)
-
-
 
     if len(contours)>0:
             areaArray = []
@@ -476,13 +438,7 @@ def get_tip_2D_position(frames, roi_center, roi_size, expected_heading, p):
 
                 heading = math.atan2(longestline[0][3]-longestline[0][1], longestline[0][2]-longestline[0][0])
 
-            # if newX < width - roi_size[0]/2 and newX > roi_size[0]/2 and newY < height - roi_size[1]/2 and newY > roi_size[1]/2:
-            # 	new_roi_center = position
-
-            # if position is not None:
-            # Constrain the new ROI center so the bounding box does not go beyond the image borders
             new_roi_center = (min(max(roi_size[0]/2, newX), width - roi_size[0]/2), min(max(roi_size[1]/2, newY), height - roi_size[1]/2))
-
 
     return position, heading, new_roi_center, diagnostic
 
@@ -605,8 +561,6 @@ def print_state(current_state):
 
 def make_data_string(data):
     return '%0.3g, %0.3g, %0.3g' % (data[0], data[1], data[2])
-
-
 
 if __name__ == '__main__':
     main()
