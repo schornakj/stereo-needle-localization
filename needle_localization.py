@@ -66,8 +66,8 @@ def main():
     global load_video_path
     global output_path
 
-    camera_top_expected_heading = 180
-    camera_side_expected_heading = 180
+    camera_top_expected_heading = 45
+    camera_side_expected_heading = 45
 
     R_top = 0.16992 # mm/px
     R_side = 0.1864 # mm/px
@@ -342,13 +342,8 @@ def main():
             out.write(combined)
             out_flow.write(combined_flow)
 
-        camera_top_last_frame = camera_top_current_frame
-        camera_side_last_frame = camera_side_current_frame
-
         lastDelta = delta
         last3DPosition = tip3D
-
-        # cv2.waitKey(0)
 
     if s is not None:
         s.close()
@@ -384,7 +379,6 @@ def get_tip_2D_position(frames, roi_center, roi_size, expected_heading, p):
     current_frame = frames[-1]
     last_frame = frames[1]
 
-
     # slice a smaller section of the current frame for optical flow
     current_section = current_frame[roi_center[1]-roi_size[1]/2:roi_center[1]+roi_size[1]/2, roi_center[0]-roi_size[0]/2:roi_center[0]+roi_size[0]/2]
 
@@ -405,7 +399,7 @@ def get_tip_2D_position(frames, roi_center, roi_size, expected_heading, p):
         # scale, levels, window, iterations, poly_n, poly_sigma, flags
 #		 (0.5, 3, 6, 5, 5, 1.2, 0)
     mag, ang = cv2.cartToPolar(flow[...,0], flow[...,1])
-    hsv[...,0] = ang*180/np.pi/2
+    hsv[...,0] = (ang*(180/np.pi)-90)*0.5
     hsv[...,2] = cv2.normalize(mag,None,0,255,cv2.NORM_MINMAX)
     bgr = cv2.cvtColor(hsv,cv2.COLOR_HSV2BGR)
 
@@ -413,20 +407,24 @@ def get_tip_2D_position(frames, roi_center, roi_size, expected_heading, p):
     max_value = hsv[..., 2].max()
     mean_value = hsv[..., 2].mean()
 
-    heading_insert_lower_bound = ((expected_heading - 20)/2 + 180)%180
-    heading_insert_upper_bound = ((expected_heading + 20)/2 + 180)%180
+    heading_insert_lower_bound = ((expected_heading - 20) + 180)%180
+    heading_insert_upper_bound = ((expected_heading + 20) + 180)%180
     insert_lower_bound= np.array([heading_insert_lower_bound, 50, int(max_value*0.7)])
     insert_upper_bound = np.array([heading_insert_upper_bound, 255, max_value])
     mask_insert = cv2.inRange(hsv, insert_lower_bound, insert_upper_bound)
 
-    heading_retract_lower_bound = ((expected_heading + 90 - 10)/2 + 180)%180
-    heading_retract_upper_bound = ((expected_heading + 90 + 10)/2 + 180)%180
+    heading_retract_lower_bound = ((expected_heading + 90 - 20) + 180)%180
+    heading_retract_upper_bound = ((expected_heading + 90 + 20) + 180)%180
     retract_lower_bound= np.array([heading_retract_lower_bound, 50, int(max_value*0.7)])
+    zero_upper = np.array([0, 50, int(max_value*0.7)])
+    zero_lower = np.array([180, 255, max_value])
     retract_upper_bound = np.array([heading_retract_upper_bound, 255, max_value])
-    mask_retract = cv2.inRange(hsv, retract_lower_bound, retract_upper_bound)
 
-    # mask = cv2.bitwise_or(mask_insert, mask_retract)
-    mask = mask_insert
+    mask_retract = cv2.inRange(hsv, retract_lower_bound, retract_upper_bound)
+    # mask_retract = cv2.bitwise_or(cv2.inRange(hsv, zero_lower, retract_upper_bound), cv2.inRange(hsv, retract_lower_bound, zero_upper))
+
+    mask = cv2.bitwise_or(mask_insert, mask_retract)
+    # mask = mask_insert
 
     kernel = np.ones((7,7),np.uint8)
     erosion = cv2.erode(mask,kernel,iterations = 1)
