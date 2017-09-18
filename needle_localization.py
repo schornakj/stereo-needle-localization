@@ -62,9 +62,9 @@ def main():
     camera_side_expected_heading = 45
 
 
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-    plt.axis('equal')
+    # fig = plt.figure()
+    # ax = fig.add_subplot(111, projection='3d')
+    # plt.axis('equal')
 
     output_path =  output_dir + output_prefix + '_' + time.strftime("%Y_%m_%d_%H_%M_%S")
     print(output_path)
@@ -124,8 +124,8 @@ def main():
     CameraMatrix2 = calibration['CameraMatrix2']
     DistCoeffs2 = calibration['DistCoeffs2']
 
-    top_frames = deque(maxlen=5)
-    side_frames = deque(maxlen=5)
+    top_frames = deque(maxlen=3)
+    side_frames = deque(maxlen=3)
 
     ret, camera_top_last_frame = cap_top.read()
     ret, camera_side_last_frame = cap_side.read()
@@ -197,47 +197,59 @@ def main():
 
     frames_since_update = 0
 
+    camera_top_farneback_parameters = (0.5, 4, 10, 5, 5, 1.2, 0)
+    camera_side_farneback_parameters = (0.5, 4, 10, 5, 5, 1.2, 0)
+
+    tracker_top = TipTracker(camera_top_farneback_parameters, camera_top_width, camera_top_height,
+                             camera_top_expected_heading, 40, camera_top_roi_center, camera_top_roi_size)
+    tracker_side = TipTracker(camera_side_farneback_parameters, camera_side_width, camera_side_height,
+                             camera_side_expected_heading, 40, camera_side_roi_center, camera_side_roi_size)
+
     while(cap_top.isOpened()):
         if cv2.waitKey(10) == ord('q'):
             break
 
         ret, camera_top_current_frame = cap_top.read()
         ret, camera_side_current_frame = cap_side.read()
-        ret, aux_frame = cap_aux.read()
+        # ret, aux_frame = cap_aux.read()
+        aux_frame = None
 
         top_frames.append(camera_top_current_frame)
         side_frames.append(camera_side_current_frame)
 
-        camera_top_farneback_parameters = (0.5, 4, 10, 5, 5, 1.2, 0)
-        camera_side_farneback_parameters = (0.5, 4, 10, 5, 5, 1.2, 0)
+        tracker_top.update(top_frames)
+        tracker_side.update(side_frames)
+
         # scale, levels, window, iterations, poly_n, poly_sigma, flags
 
-        camera_top_new_tip_position, camera_top_new_tip_heading, camera_top_new_roi_center, camera_top_bgr = get_tip_2D_position(top_frames, camera_top_roi_center, camera_top_roi_size, camera_top_expected_heading, camera_top_farneback_parameters)
-        camera_top_roi_center = camera_top_new_roi_center
+        # camera_top_new_tip_position, camera_top_new_tip_heading, camera_top_new_roi_center, camera_top_bgr = get_tip_2D_position(top_frames, camera_top_roi_center, camera_top_roi_size, camera_top_expected_heading, camera_top_farneback_parameters)
+        # camera_top_roi_center = camera_top_new_roi_center
 
-        camera_side_new_tip_position, camera_side_new_tip_heading, camera_side_new_roi_center, camera_side_bgr = get_tip_2D_position(side_frames, camera_side_roi_center, camera_side_roi_size, camera_side_expected_heading, camera_side_farneback_parameters)
-        camera_side_roi_center = camera_side_new_roi_center
+        # camera_side_new_tip_position, camera_side_new_tip_heading, camera_side_new_roi_center, camera_side_bgr = get_tip_2D_position(side_frames, camera_side_roi_center, camera_side_roi_size, camera_side_expected_heading, camera_side_farneback_parameters)
+        # camera_side_roi_center = camera_side_new_roi_center
 
         # else:
-        if camera_top_new_tip_position is not None:
-            camera_top_tip_position = camera_top_new_tip_position
-        if camera_side_new_tip_position is not None:
-            camera_side_tip_position = camera_side_new_tip_position
+        # if camera_top_new_tip_position is not None:
+        #     camera_top_tip_position = camera_top_new_tip_position
+        # if camera_side_new_tip_position is not None:
+        #     camera_side_tip_position = camera_side_new_tip_position
+        #
+        # if camera_top_new_tip_heading is not None:
+        #         camera_top_tip_heading = camera_top_new_tip_heading
+        # if camera_side_new_tip_heading is not None:
+        #     camera_side_tip_heading = camera_side_new_tip_heading
 
-        if camera_top_new_tip_heading is not None:
-                camera_top_tip_heading = camera_top_new_tip_heading
-        if camera_side_new_tip_heading is not None:
-            camera_side_tip_heading = camera_side_new_tip_heading
-
-        camera_top_with_marker = draw_tip_marker(camera_top_current_frame, camera_top_roi_center, camera_top_roi_size, camera_top_tip_position, camera_top_tip_heading)
+        camera_top_with_marker = draw_tip_marker(camera_top_current_frame, tracker_top.roi_center, tracker_top.roi_size, tracker_top.position_tip)
         camera_top_with_marker = draw_target_marker(camera_top_with_marker, TARGET_TOP)
 
-        camera_side_with_marker = draw_tip_marker(camera_side_current_frame, camera_side_roi_center, camera_side_roi_size, camera_side_tip_position, camera_side_tip_heading)
+        camera_side_with_marker = draw_tip_marker(camera_side_current_frame, tracker_side.roi_center, tracker_side.roi_size, tracker_side.position_tip)
         camera_side_with_marker = draw_target_marker(camera_side_with_marker, TARGET_SIDE)
 
+
+
         # triangulatePoints expects matrices of floats, so we need to rebuild the tip coordinates as float tuples instead of int tuples
-        camera_top_tip_float = (float(camera_top_tip_position[0]), float(camera_top_tip_position[1]))
-        camera_side_tip_float = (float(camera_side_tip_position[0]), float(camera_side_tip_position[1]))
+        camera_top_tip_float = (float(tracker_top.position_tip[0]), float(tracker_top.position_tip[1]))
+        camera_side_tip_float = (float(tracker_side.position_tip[0]), float(tracker_side.position_tip[1]))
 
         target_top_float = (float(TARGET_TOP[0]), float(TARGET_TOP[1]))
         target_side_float = (float(TARGET_SIDE[0]), float(TARGET_SIDE[1]))
@@ -283,20 +295,30 @@ def main():
         if use_connection and SEND_MESSAGES:
             s.send(compose_OpenIGTLink_message(delta_tform))
 
-        cv2.imshow('Camera Top',camera_top_current_frame)
-        cv2.imshow('Camera Side',camera_side_current_frame)
+        cv2.imshow('Camera Top', camera_top_current_frame)
+        cv2.imshow('Camera Side', camera_side_current_frame)
 
-        cv2.imshow('Camera Top bgr', camera_top_bgr)
-        cv2.imshow('Camera Side bgr', camera_side_bgr)
+        # cv2.imshow('Camera Top bgr', camera_top_bgr)
+        # cv2.imshow('Camera Side bgr', camera_side_bgr)
 
         font = cv2.FONT_HERSHEY_DUPLEX
         text_color = (0,255,0)
         data_frame = np.zeros_like(camera_top_with_marker)
-        cv2.putText(data_frame, 'Delta: ' + make_data_string(transform_to_robot_coords(delta)), (10, 50), font, 1, text_color)
-        cv2.putText(data_frame, 'Target: ' + make_data_string(transform_to_robot_coords(target3D)), (10, 100), font, 1, text_color)
-        cv2.putText(data_frame, 'Tip: ' + make_data_string(transform_to_robot_coords(tip3D)), (10, 150), font, 1, text_color)
-        cv2.putText(data_frame, 'Top  2D: ' + str(camera_top_tip_position[0]) + ' ' + str(camera_top_tip_position[1]), (10, 200), font, 1, text_color)
-        cv2.putText(data_frame, 'Side 2D: ' + str(camera_side_tip_position[0]) + ' ' + str(camera_side_tip_position[1]), (10, 250), font, 1, text_color)
+
+        cv2.putText(data_frame, 'Delta: ' + make_data_string(transform_to_robot_coords(delta)),
+                    (10, 50), font, 1, text_color)
+
+        cv2.putText(data_frame, 'Target: ' + make_data_string(transform_to_robot_coords(target3D)),
+                    (10, 100), font, 1, text_color)
+
+        cv2.putText(data_frame, 'Tip: ' + make_data_string(transform_to_robot_coords(tip3D)),
+                    (10, 150), font, 1, text_color)
+
+        cv2.putText(data_frame, 'Top  2D: ' + str(tracker_top.position_tip[0]) + ' ' + str(tracker_top.position_tip[1]),
+                    (10, 200), font, 1, text_color)
+
+        cv2.putText(data_frame, 'Side 2D: ' + str(tracker_side.position_tip[0]) + ' ' + str(tracker_side.position_tip[1]),
+                    (10, 250), font, 1, text_color)
 
         if aux_frame is not None:
             combined2 = np.concatenate((data_frame, aux_frame), axis=0)
@@ -310,7 +332,7 @@ def main():
             combined1 = np.concatenate((camera_top_with_marker, camera_side_with_marker), axis=0)
             combined = np.concatenate((combined1, combined2), axis=1)
 
-            combined_flow = np.concatenate((camera_top_bgr, camera_side_bgr), axis=1)
+            combined_flow = np.concatenate((tracker_top.flow_diagnostic, tracker_side.flow_diagnostic), axis=1)
             cv2.imshow('Combined', combined)
             cv2.imshow('Combined Flow', combined_flow)
             out.write(combined)
@@ -337,31 +359,149 @@ def main():
 
     # plt.show()
 
+
+class TipTracker:
+
+    def __init__(self, params, image_width, image_height, heading_expected,
+                 heading_range, roi_center_initial, roi_size):
+        self.flow_params = params
+        self.heading = heading_expected
+        self.heading_range = heading_range
+        self.roi_center = roi_center_initial
+        self.roi_size = roi_size
+        self.image_width = image_width
+        self.image_height = image_height
+        self.position_tip = roi_center_initial
+
+
+    def _get_section(self, image):
+        return image[self.roi_center[1] - self.roi_size[1] / 2:self.roi_center[1] + self.roi_size[1] / 2,
+               self.roi_center[0] - self.roi_size[0] / 2:self.roi_center[0] + self.roi_size[0] / 2]
+
+    def _get_dense_flow(self, image_past, image_current):
+        flow = cv2.calcOpticalFlowFarneback(cv2.cvtColor(image_past, cv2.COLOR_BGR2GRAY),
+                                            cv2.cvtColor(image_current, cv2.COLOR_BGR2GRAY),
+                                            None,
+                                            self.flow_params[0], self.flow_params[1], self.flow_params[2],
+                                            self.flow_params[3], self.flow_params[4], self.flow_params[5],
+                                            self.flow_params[6])
+        flow_magnitude, flow_angle = cv2.cartToPolar(flow[..., 0], flow[..., 1])
+
+        hsv = np.zeros_like(image_current)
+        hsv[..., 1] = 255
+
+        hsv[..., 0] = (flow_angle * (180 / np.pi) - 90) * 0.5
+        hsv[..., 2] = cv2.normalize(flow_magnitude, None, 0, 255, cv2.NORM_MINMAX)
+        bgr = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+        return hsv, bgr
+
+    def _filter_by_heading(self, flow_hsv):
+        min_value = flow_hsv[..., 2].min()
+        max_value = flow_hsv[..., 2].max()
+        mean_value = flow_hsv[..., 2].mean()
+
+        heading_insert_bound_lower = ((self.heading - self.heading_range/2) + 180) % 180
+        heading_insert_bound_upper= ((self.heading + self.heading_range/2) + 180) % 180
+        flow_hsv_insert_bound_lower = np.array([heading_insert_bound_lower, 50, int(max_value * 0.7)])
+        flow_hsv_insert_bound_upper = np.array([heading_insert_bound_upper, 255, max_value])
+
+        mask_insert = cv2.inRange(flow_hsv, flow_hsv_insert_bound_lower, flow_hsv_insert_bound_upper)
+
+        heading_retract_bound_lower = ((self.heading + 90 - self.heading_range/2) + 180) % 180
+        heading_retract_bound_upper = ((self.heading + 90 + self.heading_range/2) + 180) % 180
+        flow_hsv_retract_bound_lower = np.array([heading_retract_bound_lower, 50, int(max_value * 0.7)])
+        flow_hsv_retract_bound_upper = np.array([heading_retract_bound_upper, 255, max_value])
+
+        mask_retract = cv2.inRange(flow_hsv, flow_hsv_retract_bound_lower, flow_hsv_retract_bound_upper)
+
+        mask = cv2.bitwise_or(mask_insert, mask_retract)
+
+        kernel = np.ones((7, 7), np.uint8)
+        erosion = cv2.erode(mask, kernel, iterations=1)
+        dilate = cv2.dilate(erosion, kernel, iterations=1)
+
+        ret, thresh = cv2.threshold(dilate, 127, 255, 0)
+        return thresh
+
+    def _get_tip_coords(self, image_thresholded):
+        position_tip = None
+
+        img, contours, hierarchy = cv2.findContours(image_thresholded, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+        if len(contours) > 0:
+            areas = []
+            for i, c in enumerate(contours):
+                area = cv2.contourArea(c)
+                areas.append(area)
+            contours_sorted = sorted(zip(areas, contours), key=lambda x: x[0], reverse=True)
+            contour_largest = contours_sorted[0][1]
+
+            M = cv2.moments(contour_largest)
+            cx = int(M['m10'] / M['m00'])
+            cy = int(M['m01'] / M['m00'])
+
+            tip_x = self.roi_center[0] - self.roi_size[0] / 2 + cx
+            tip_y = self.roi_center[1] - self.roi_size[1] / 2 + cy
+
+            position_tip = (tip_x, tip_y)
+        return position_tip
+
+    def _get_new_valid_roi(self, position_tip):
+        return (min(max(self.roi_size[0] / 2, position_tip[0]), self.image_width - self.roi_size[0] / 2),
+                          min(max(self.roi_size[1] / 2, position_tip[1]), self.image_height - self.roi_size[1] / 2))
+
+    def update(self, frames):
+        frame_current = frames[-1]
+        frame_past = frames[0]
+        section_current = self._get_section(frame_current)
+        section_past = self._get_section(frame_past)
+
+        self.flow_hsv, self.flow_bgr = self._get_dense_flow(section_past, section_current)
+
+        flow_thresholded = self._filter_by_heading(self.flow_hsv)
+
+        self.flow_diagnostic = np.zeros((2 * self.roi_size[1], self.roi_size[0], 3), np.uint8)
+        self.flow_diagnostic[:self.roi_size[1], :, :] = self.flow_bgr
+        self.flow_diagnostic[self.roi_size[1]:, :, :] = cv2.cvtColor(flow_thresholded, cv2.COLOR_GRAY2BGR)
+
+        position_tip_new = self._get_tip_coords(flow_thresholded)
+        if position_tip_new is not None:
+            self.position_tip = position_tip_new
+            self.roi_center = self._get_new_valid_roi(self.position_tip)
+
+
 def get_tip_2D_position(frames, roi_center, roi_size, expected_heading, p):
     position = None
     heading = None
     new_roi_center = roi_center
 
     current_frame = frames[-1]
-    last_frame = frames[1]
+    last_frame = frames[0]
+    mid_frame = frames[-2]
 
     # slice a smaller section of the current frame for optical flow
-    current_section = current_frame[roi_center[1]-roi_size[1]/2:roi_center[1]+roi_size[1]/2, roi_center[0]-roi_size[0]/2:roi_center[0]+roi_size[0]/2]
+    current_section = current_frame[roi_center[1]-roi_size[1]/2:roi_center[1]+roi_size[1]/2,
+                      roi_center[0]-roi_size[0]/2:roi_center[0]+roi_size[0]/2]
 
     # slice a section of the last frame that is the same size and in the same position as the new slice
-    last_section = last_frame[roi_center[1]-roi_size[1]/2:roi_center[1]+roi_size[1]/2, roi_center[0]-roi_size[0]/2:roi_center[0]+roi_size[0]/2]
+    last_section = last_frame[roi_center[1]-roi_size[1]/2:roi_center[1]+roi_size[1]/2,
+                   roi_center[0]-roi_size[0]/2:roi_center[0]+roi_size[0]/2]
+
+    mid_section = last_frame[roi_center[1] - roi_size[1] / 2:roi_center[1] + roi_size[1] / 2,
+                   roi_center[0] - roi_size[0] / 2:roi_center[0] + roi_size[0] / 2]
 
     # make a hsv matrix to hold the flow results
     hsv = np.zeros_like(current_section)
     hsv[...,1] = 255
 
-    # convert the sections to grawscale
-    prvs = cv2.cvtColor(last_section,cv2.COLOR_BGR2GRAY)
-    next = cv2.cvtColor(current_section,cv2.COLOR_BGR2GRAY)
+
 
     # conduct optical flow with some generic parameters and write the results to hsv
     # hue is direction, value is magnitude
-    flow = cv2.calcOpticalFlowFarneback(prvs,next, None, p[0], p[1], p[2], p[3], p[4], p[5], p[6])
+    flow = cv2.calcOpticalFlowFarneback(cv2.cvtColor(last_section,cv2.COLOR_BGR2GRAY),
+                                        cv2.cvtColor(current_section,cv2.COLOR_BGR2GRAY),
+                                        None, p[0], p[1], p[2], p[3], p[4], p[5], p[6])
+    # flow2 = cv2.calcOpticalFlowFarneback(mid, next, None, p[0], p[1], p[2], p[3], p[4], p[5], p[6])
         # scale, levels, window, iterations, poly_n, poly_sigma, flags
 #		 (0.5, 3, 6, 5, 5, 1.2, 0)
     mag, ang = cv2.cartToPolar(flow[...,0], flow[...,1])
@@ -423,26 +563,11 @@ def get_tip_2D_position(frames, roi_center, roi_size, expected_heading, p):
             height, width, channels = current_frame.shape
             position = (newX, newY)
 
-            edges = cv2.Canny(current_section,100,200)
-            minLineLength = current_section.shape[1]-1
-            maxLineGap = 10
-            lines = cv2.HoughLinesP(edges,1,np.pi/180,50,minLineLength,maxLineGap)
-
-            if lines is not None:
-                lengthArray=[]
-                for i, line in enumerate(lines):
-                    length = math.sqrt(pow(line[0][2]-line[0][0],2)+pow(line[0][3]-line[0][1],2))
-                    lengthArray.append(length)
-                sortedlines = sorted(zip(lengthArray,lines), key = lambda x: x[0], reverse=True)
-                longestline = sortedlines[0][1]
-
-                heading = math.atan2(longestline[0][3]-longestline[0][1], longestline[0][2]-longestline[0][0])
-
             new_roi_center = (min(max(roi_size[0]/2, newX), width - roi_size[0]/2), min(max(roi_size[1]/2, newY), height - roi_size[1]/2))
 
     return position, heading, new_roi_center, diagnostic
 
-def draw_tip_marker(image, roi_center, roi_size, tip_position, tip_heading):
+def draw_tip_marker(image, roi_center, roi_size, tip_position):
     line_length = 50
     output = image.copy()
     cv2.circle(output, tip_position, 10, (0,0,255))
