@@ -249,6 +249,7 @@ def main():
             # print('Delta tform: ' + str(transform_to_robot_coords(delta)))
             #
             # trajectory.append(transform_to_robot_coords(delta))
+            print("Adding point to path")
             top_path.append(tracker_top.position_tip)
             side_path.append(tracker_side.position_tip)
 
@@ -303,8 +304,8 @@ def main():
         out.write(combined)
         out_flow.write(combined_flow)
 
-        lastDelta = delta
-        last3DPosition = position_tip
+        delta_last = delta
+        position_tip_last = position_tip
 
     if s is not None:
         s.close()
@@ -499,14 +500,6 @@ def get_coords_side(event, x, y, flags, param):
 
     elif event == cv2.EVENT_MBUTTONDOWN:
         ESTIMATE_SIDE = x, y
-
-
-def linear_to_3D(coords_top, coords_side, R_top, R_side, offset_px):
-    x_mm = -coords_top[1] * R_top
-    y_mm = coords_side[1] * R_side
-    z_mm = (coords_top[0] * R_top + (coords_side[0] + offset_px) * R_side) / 2
-
-    return np.array([x_mm, y_mm, z_mm])
 
 
 def transform_to_robot_coords(input):
