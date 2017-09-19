@@ -197,6 +197,9 @@ def main():
     tracker_side = TipTracker(camera_side_farneback_parameters, camera_side_width, camera_side_height,
                               camera_side_expected_heading, 40, camera_side_roi_center, camera_side_roi_size)
 
+    target_top = TargetTracker(55, None, None)
+    target_side = TargetTracker(55, None, None)
+
     triangulator_tip = Triangulator(p1, p2)
     triangulator_target = Triangulator(p1, p2)
 
@@ -215,13 +218,16 @@ def main():
         tracker_top.update(top_frames)
         tracker_side.update(side_frames)
 
+        target_top.update(camera_top_current_frame)
+        target_side.update(camera_side_current_frame)
+
         camera_top_with_marker = draw_tip_marker(camera_top_current_frame, tracker_top.roi_center,
                                                  tracker_top.roi_size, tracker_top.position_tip)
-        camera_top_with_marker = draw_target_marker(camera_top_with_marker, TARGET_TOP)
+        camera_top_with_marker = draw_target_marker(camera_top_with_marker, target_top.target_coords)
 
         camera_side_with_marker = draw_tip_marker(camera_side_current_frame, tracker_side.roi_center,
                                                   tracker_side.roi_size, tracker_side.position_tip)
-        camera_side_with_marker = draw_target_marker(camera_side_with_marker, TARGET_SIDE)
+        camera_side_with_marker = draw_target_marker(camera_side_with_marker, target_side.target_coords)
 
         position_tip = triangulator_tip.get_position_3D(tracker_top.position_tip, tracker_side.position_tip)
         position_target = triangulator_target.get_position_3D(TARGET_TOP, TARGET_SIDE)
@@ -442,9 +448,45 @@ class Triangulator:
         return (float(coords[0]), float(coords[1]))
 
     def get_position_3D(self, coords_top, coords_side):
-        pose_3D_homogeneous = cv2.triangulatePoints(self.P1, self.P2, np.array(self._to_float(coords_top)).reshape(2, -1),
+        pose_3D_homogeneous = cv2.triangulatePoints(self.P1, self.P2,
+                                                    np.array(self._to_float(coords_top)).reshape(2, -1),
                                                     np.array(self._to_float(coords_side)).reshape(2, -1))
         return (pose_3D_homogeneous / pose_3D_homogeneous[3])[0:3]
+
+class TargetTracker:
+    def __init__(self, target_hsv, target_coords_initial, dims_window):
+        self.target_hsv = target_hsv
+        self.target_coords = target_coords_initial
+        self.dims_window = dims_window
+
+    def update(self, image):
+        # TODO: localize target as centroid of cluster near specified HSV values
+
+        image_hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+
+        bound_lower = np.array([self.target_hsv/2-10, 50, 50])
+        bound_upper = np.array([self.target_hsv/2+10, 255, 255])
+
+        mask = cv2.inRange(image_hsv, bound_lower, bound_upper)
+
+        kernel = np.ones((7, 7), np.uint8)
+        mask_opened = cv2.erode(cv2.dilate(mask, kernel, iterations=1), kernel, iterations=1)
+
+        img, contours, hierarchy = cv2.findContours(mask_opened, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+        if len(contours) > 0:
+            areas = []
+            for i, c in enumerate(contours):
+                area = cv2.contourArea(c)
+                areas.append(area)
+            contours_sorted = sorted(zip(areas, contours), key=lambda x: x[0], reverse=True)
+            contour_largest = contours_sorted[0][1]
+
+            M = cv2.moments(contour_largest)
+            cx = int(M['m10'] / M['m00'])
+            cy = int(M['m01'] / M['m00'])
+
+            self.target_coords = (cx, cy)
 
 def draw_tip_marker(image, roi_center, roi_size, tip_position):
     line_length = 50
