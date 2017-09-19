@@ -467,7 +467,7 @@ class TargetTracker:
         image_hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 
         bound_lower = np.array([self.target_hsv/2 - self.target_hsv_range/4, 50, 50])
-        bound_upper = np.array([self.target_hsv/2 + self.target_hsv_range/4, 255, 255])
+        bound_upper = np.array([self.target_hsv/2 + self.target_hsv_range/4, 255, 150])
 
         mask = cv2.inRange(image_hsv, bound_lower, bound_upper)
 
