@@ -34,6 +34,8 @@ ip_address = str(root.find("ip").text)
 port = int(root.find("port").text)
 output_dir = str(root.find("output_dir").text)
 output_prefix = str(root.find("prefix").text)
+hue_target = int(root.find("hue_target").text)
+hue_target_range = int(root.find("hue_target_range").text)
 
 TARGET_TOP = (int(258), int(246))
 TARGET_SIDE = (int(261), int(230))
@@ -197,8 +199,8 @@ def main():
     tracker_side = TipTracker(camera_side_farneback_parameters, camera_side_width, camera_side_height,
                               camera_side_expected_heading, 40, camera_side_roi_center, camera_side_roi_size)
 
-    target_top = TargetTracker(55, None, None)
-    target_side = TargetTracker(55, None, None)
+    target_top = TargetTracker(hue_target, hue_target_range, None)
+    target_side = TargetTracker(hue_target, hue_target_range, None)
 
     triangulator_tip = Triangulator(p1, p2)
     triangulator_target = Triangulator(p1, p2)
@@ -454,9 +456,9 @@ class Triangulator:
         return (pose_3D_homogeneous / pose_3D_homogeneous[3])[0:3]
 
 class TargetTracker:
-    def __init__(self, target_hsv, target_coords_initial, dims_window):
+    def __init__(self, target_hsv, target_hsv_range, dims_window):
         self.target_hsv = target_hsv
-        self.target_coords = target_coords_initial
+        self.target_hsv_range = target_hsv_range
         self.dims_window = dims_window
 
     def update(self, image):
@@ -464,8 +466,8 @@ class TargetTracker:
 
         image_hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 
-        bound_lower = np.array([self.target_hsv/2-10, 50, 50])
-        bound_upper = np.array([self.target_hsv/2+10, 255, 255])
+        bound_lower = np.array([self.target_hsv/2 - self.target_hsv_range/4, 50, 50])
+        bound_upper = np.array([self.target_hsv/2 + self.target_hsv_range/4, 255, 255])
 
         mask = cv2.inRange(image_hsv, bound_lower, bound_upper)
 
