@@ -25,6 +25,8 @@ parser.add_argument('--load_video_path', type=str, nargs=1, default='./data/test
                     help='Path for video to load if --use_recorded_video is specified.')
 parser.add_argument('--save_video', action='store_true',
                     help='Save input and output video streams for diagnostic or archival purposes.')
+parser.add_argument('--use_target_segmentation', action='store_true',
+                    help='Track the target as the largest blob of the color specified in the config file. Default uses manually-picked point.')
 args = parser.parse_args()
 globals().update(vars(args))
 
@@ -183,7 +185,7 @@ def main():
         filename=output_path + '/output_combined.avi',
         fourcc=fourcc,  # '-1' Ask for an codec; '0' disables compressing.
         fps=20.0,
-        frameSize=(camera_top_width * 2, camera_top_height * 2),
+        frameSize=(int(camera_top_width * 2), int(camera_top_height * 2)),
         isColor=True)
 
     out_top = cv2.VideoWriter(
@@ -244,11 +246,14 @@ def main():
         tracker_top.update(top_frames)
         tracker_side.update(side_frames)
 
-        target_top.update(camera_top_current_frame)
-        target_side.update(camera_side_current_frame)
-
-        cv2.imshow("Target top", target_top.image_masked)
-        cv2.imshow("Target side", target_side.image_masked)
+        if use_target_segmentation:
+            target_top.update(camera_top_current_frame)
+            target_side.update(camera_side_current_frame)
+            cv2.imshow("Target top", target_top.image_masked)
+            cv2.imshow("Target side", target_side.image_masked)
+        else:
+            target_top.target_coords = TARGET_TOP
+            target_side.target_coords = TARGET_SIDE
 
         camera_top_with_marker = draw_tip_marker(camera_top_current_frame, tracker_top.roi_center,
                                                  tracker_top.roi_size, tracker_top.position_tip)
@@ -283,7 +288,7 @@ def main():
             # print('Target tform: ' + str(transform_to_robot_coords(target3D)))
             # print('Delta tform: ' + str(transform_to_robot_coords(delta)))
             #
-            # trajectory.append(transform_to_robot_coords(delta))
+            trajectory.append(transform_to_robot_coords(delta))
             print("Adding point to path")
             top_path.append(tracker_top.position_tip)
             side_path.append(tracker_side.position_tip)
@@ -329,11 +334,12 @@ def main():
         out_top.write(camera_top_current_frame)
         out_side.write(camera_side_current_frame)
 
+        #TODO: Fix likely data type issue that prevents combined video from being saved
         # if camera_top_with_marker is not None and camera_side_with_marker is not None:
         combined1 = np.concatenate((camera_top_with_marker, camera_side_with_marker), axis=0)
-        combined = np.concatenate((combined1, combined2), axis=1)
+        combined = np.array(np.concatenate((combined1, combined2), axis=1), dtype=np.uint8)
 
-        combined_flow = np.concatenate((tracker_top.flow_diagnostic, tracker_side.flow_diagnostic), axis=1)
+        combined_flow = np.array(np.concatenate((tracker_top.flow_diagnostic, tracker_side.flow_diagnostic), axis=1), dtype=np.uint8)
         cv2.imshow('Combined', combined)
         cv2.imshow('Combined Flow', combined_flow)
         out.write(combined)
@@ -356,7 +362,7 @@ def main():
     cv2.destroyAllWindows()
 
     trajectoryArray = np.array(trajectory)
-
+    print(trajectoryArray)
     np.savetxt(output_path + "/trajectory.csv", trajectoryArray, delimiter=",")
     np.savez_compressed(output_path + "/trajectory.npz", trajectory=trajectoryArray,
                         top_path=np.array(top_path), side_path=np.array(side_path))
@@ -555,6 +561,7 @@ def get_coords_top(event, x, y, flags, param):
     global STATE
     global TARGET_TOP
     if event == cv2.EVENT_LBUTTONDOWN:
+        print("Click in top image")
         TARGET_TOP = x, y
         if STATE == STATE_NO_TARGET_POINTS:
             STATE = change_state(STATE, STATE_ONE_TARGET_POINT_SET)
@@ -571,6 +578,7 @@ def get_coords_side(event, x, y, flags, param):
     global STATE
     global TARGET_SIDE
     if event == cv2.EVENT_LBUTTONDOWN:
+        print("Click in side image")
         TARGET_SIDE = x, y
         if STATE == STATE_NO_TARGET_POINTS:
             STATE = change_state(STATE, STATE_ONE_TARGET_POINT_SET)
