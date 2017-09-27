@@ -13,6 +13,7 @@ import struct
 import argparse
 import xml.etree.ElementTree as ET
 from collections import deque
+import yaml
 
 # Parse commang line arguments. These are primarily flags for things likely to change between runs.
 parser = argparse.ArgumentParser(description='Do 3D localization of a needle tip using dense optical flow.')
@@ -111,8 +112,31 @@ def main():
     # calibration = np.load('calibration_close.npz')
     calibration = np.load('calibration.npz')
 
+    cal_left = Struct(**yaml.load(file('left.yaml','r')))
+    cal_right = Struct(**yaml.load(file('right.yaml', 'r')))
+
+    mat_left_obj = Struct(**cal_left.camera_matrix)
+    mat_left = np.reshape(np.array(mat_left_obj.data),(mat_left_obj.rows,mat_left_obj.cols))
+
+    mat_right_obj = Struct(**cal_right.camera_matrix)
+    mat_right = np.reshape(np.array(mat_right_obj.data),(mat_right_obj.rows,mat_right_obj.cols))
+
+    # p_left = Struct(**Struct(**cal_left).projection_matrix)
+    # print(np.reshape(np.array(p_left.data),(p_left.rows,p_left.cols)))
+    #
+    # p_right = Struct(**Struct(**cal_right).projection_matrix)
+    # print(np.reshape(np.array(p_right.data),(p_right.rows,p_right.cols)))
+
+    trans_right = np.array([[-0.0016343138898400025], [-0.13299820438398743], [0.1312384027069722]])
+    rot_right = np.array([0.9915492807737206, 0.03743949685116827, -0.12421073976371574, 0.12130773650921836, 0.07179373377171916, 0.9900151982945141, 0.04598322368134065, -0.9967165815148494, 0.06664532446634884]).reshape((3,3))
+
+    # p1 = np.concatenate((np.dot(mat_right, np.eye(3)), np.dot(mat_right, np.zeros((3,1)))), axis=1)
+    # p2 = np.concatenate((np.dot(mat_right, rot_right), np.dot(mat_right, trans_right)), axis=1)
+
     p1 = calibration['P1']
     p2 = calibration['P2']
+    # print(p1)
+    # print(p2)
 
     # F = calibration['F']
 
@@ -199,8 +223,8 @@ def main():
     tracker_side = TipTracker(camera_side_farneback_parameters, camera_side_width, camera_side_height,
                               camera_side_expected_heading, 40, camera_side_roi_center, camera_side_roi_size)
 
-    target_top = TargetTracker(hue_target, hue_target_range, None)
-    target_side = TargetTracker(hue_target, hue_target_range, None)
+    target_top = TargetTracker(hue_target, hue_target_range, None, TARGET_TOP)
+    target_side = TargetTracker(hue_target, hue_target_range, None, TARGET_SIDE)
 
     triangulator_tip = Triangulator(p1, p2)
     triangulator_target = Triangulator(p1, p2)
@@ -223,6 +247,9 @@ def main():
         target_top.update(camera_top_current_frame)
         target_side.update(camera_side_current_frame)
 
+        cv2.imshow("Target top", target_top.image_masked)
+        cv2.imshow("Target side", target_side.image_masked)
+
         camera_top_with_marker = draw_tip_marker(camera_top_current_frame, tracker_top.roi_center,
                                                  tracker_top.roi_size, tracker_top.position_tip)
         camera_top_with_marker = draw_target_marker(camera_top_with_marker, target_top.target_coords)
@@ -232,7 +259,7 @@ def main():
         camera_side_with_marker = draw_target_marker(camera_side_with_marker, target_side.target_coords)
 
         position_tip = triangulator_tip.get_position_3D(tracker_top.position_tip, tracker_side.position_tip)
-        position_target = triangulator_target.get_position_3D(TARGET_TOP, TARGET_SIDE)
+        position_target = triangulator_target.get_position_3D(target_top.target_coords, target_side.target_coords)
 
 
         delta = position_target - position_tip
@@ -267,7 +294,7 @@ def main():
         # Send the message to the needle guidance robot controller
         if use_connection and SEND_MESSAGES:
             s.send(compose_OpenIGTLink_message(delta_tform))
-
+            print("Sent a transform", str(delta_tform))
         cv2.imshow('Camera Top', camera_top_current_frame)
         cv2.imshow('Camera Side', camera_side_current_frame)
 
@@ -320,10 +347,12 @@ def main():
 
     cap_top.release()
     cap_side.release()
+
     out.release()
     out_top.release()
     out_side.release()
     out_flow.release()
+
     cv2.destroyAllWindows()
 
     trajectoryArray = np.array(trajectory)
@@ -456,10 +485,11 @@ class Triangulator:
         return (pose_3D_homogeneous / pose_3D_homogeneous[3])[0:3]
 
 class TargetTracker:
-    def __init__(self, target_hsv, target_hsv_range, dims_window):
+    def __init__(self, target_hsv, target_hsv_range, dims_window, target_coords_initial):
         self.target_hsv = target_hsv
         self.target_hsv_range = target_hsv_range
         self.dims_window = dims_window
+        self.target_coords = target_coords_initial
 
     def update(self, image):
         # TODO: localize target as centroid of cluster near specified HSV values
@@ -473,6 +503,10 @@ class TargetTracker:
 
         kernel = np.ones((7, 7), np.uint8)
         mask_opened = cv2.erode(cv2.dilate(mask, kernel, iterations=1), kernel, iterations=1)
+        # mask_opened = mask
+
+
+        self.image_masked = mask_opened
 
         img, contours, hierarchy = cv2.findContours(mask_opened, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
@@ -487,8 +521,11 @@ class TargetTracker:
             M = cv2.moments(contour_largest)
             cx = int(M['m10'] / M['m00'])
             cy = int(M['m01'] / M['m00'])
-
             self.target_coords = (cx, cy)
+
+class Struct:
+    def __init__(self, **entries):
+        self.__dict__.update(entries)
 
 def draw_tip_marker(image, roi_center, roi_size, tip_position):
     line_length = 50

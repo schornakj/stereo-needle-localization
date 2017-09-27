@@ -5,6 +5,6 @@
 	<output_dir>./data/</output_dir>
 	<prefix>insertion</prefix>
 	<calibration_file>calibration.npz</calibration_file>
-	<hue_target>55</hue_target>
-	<hue_target_range>20</hue_target_range>
+	<hue_target>45</hue_target>
+	<hue_target_range>25</hue_target_range>
 </data>
