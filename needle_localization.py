@@ -247,8 +247,8 @@ def main():
         target_top.update(camera_top_current_frame)
         target_side.update(camera_side_current_frame)
 
-        cv2.imshow("Target top", target_top.image_masked)
-        cv2.imshow("Target side", target_side.image_masked)
+        # cv2.imshow("Target top", target_top.image_masked)
+        # cv2.imshow("Target side", target_side.image_masked)
 
         camera_top_with_marker = draw_tip_marker(camera_top_current_frame, tracker_top.roi_center,
                                                  tracker_top.roi_size, tracker_top.position_tip)
