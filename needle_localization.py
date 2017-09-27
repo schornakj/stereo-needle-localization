@@ -130,11 +130,11 @@ def main():
     trans_right = np.array([[-0.0016343138898400025], [-0.13299820438398743], [0.1312384027069722]])
     rot_right = np.array([0.9915492807737206, 0.03743949685116827, -0.12421073976371574, 0.12130773650921836, 0.07179373377171916, 0.9900151982945141, 0.04598322368134065, -0.9967165815148494, 0.06664532446634884]).reshape((3,3))
 
-    # p1 = np.concatenate((np.dot(mat_right, np.eye(3)), np.dot(mat_right, np.zeros((3,1)))), axis=1)
-    # p2 = np.concatenate((np.dot(mat_right, rot_right), np.dot(mat_right, trans_right)), axis=1)
+    p1 = np.concatenate((np.dot(mat_right, np.eye(3)), np.dot(mat_right, np.zeros((3,1)))), axis=1)
+    p2 = np.concatenate((np.dot(mat_right, rot_right), np.dot(mat_right, trans_right)), axis=1)
 
-    p1 = calibration['P1']
-    p2 = calibration['P2']
+    # p1 = calibration['P1']
+    # p2 = calibration['P2']
     # print(p1)
     # print(p2)
 
@@ -247,8 +247,8 @@ def main():
         target_top.update(camera_top_current_frame)
         target_side.update(camera_side_current_frame)
 
-        # cv2.imshow("Target top", target_top.image_masked)
-        # cv2.imshow("Target side", target_side.image_masked)
+        cv2.imshow("Target top", target_top.image_masked)
+        cv2.imshow("Target side", target_side.image_masked)
 
         camera_top_with_marker = draw_tip_marker(camera_top_current_frame, tracker_top.roi_center,
                                                  tracker_top.roi_size, tracker_top.position_tip)
@@ -496,7 +496,7 @@ class TargetTracker:
 
         image_hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 
-        bound_lower = np.array([self.target_hsv/2 - self.target_hsv_range/4, 50, 50])
+        bound_lower = np.array([self.target_hsv/2 - self.target_hsv_range/4, 20, 50])
         bound_upper = np.array([self.target_hsv/2 + self.target_hsv_range/4, 255, 150])
 
         mask = cv2.inRange(image_hsv, bound_lower, bound_upper)
