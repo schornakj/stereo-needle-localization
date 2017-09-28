@@ -232,13 +232,13 @@ def main():
     triangulator_target = Triangulator(p1, p2)
 
     while cap_top.isOpened():
-        if cv2.waitKey(10) == ord('q'):
-            break
-
         ret, camera_top_current_frame = cap_top.read()
         ret, camera_side_current_frame = cap_side.read()
         # ret, aux_frame = cap_aux.read()
         aux_frame = None
+
+        if cv2.waitKey(10) == ord('q') or camera_top_current_frame is None or camera_side_current_frame is None:
+            break
 
         top_frames.append(camera_top_current_frame)
         side_frames.append(camera_side_current_frame)
