@@ -181,7 +181,7 @@ def main():
 
     fourcc = cv2.VideoWriter_fourcc(*'XVID')
 
-    out = cv2.VideoWriter(
+    out_combined = cv2.VideoWriter(
         filename=output_path + '/output_combined.avi',
         fourcc=fourcc,  # '-1' Ask for an codec; '0' disables compressing.
         fps=20.0,
@@ -202,11 +202,11 @@ def main():
         frameSize=(camera_side_width, camera_side_height),
         isColor=True)
 
-    out_flow = out = cv2.VideoWriter(
+    out_flow = cv2.VideoWriter(
         filename=output_path + '/output_flow.avi',
         fourcc=fourcc,  # '-1' Ask for an codec; '0' disables compressing.
         fps=10.0,
-        frameSize=(camera_top_roi_size[0] * 2, camera_top_roi_size[1] * 3),
+        frameSize=(camera_top_roi_size[0] * 2, camera_top_roi_size[1] * 2),
         isColor=True)
 
     cv2.namedWindow("Camera Top")
@@ -342,7 +342,7 @@ def main():
         combined_flow = np.array(np.concatenate((tracker_top.flow_diagnostic, tracker_side.flow_diagnostic), axis=1), dtype=np.uint8)
         cv2.imshow('Combined', combined)
         cv2.imshow('Combined Flow', combined_flow)
-        out.write(combined)
+        out_combined.write(combined)
         out_flow.write(combined_flow)
 
         delta_last = delta
@@ -354,7 +354,7 @@ def main():
     cap_top.release()
     cap_side.release()
 
-    out.release()
+    out_combined.release()
     out_top.release()
     out_side.release()
     out_flow.release()
