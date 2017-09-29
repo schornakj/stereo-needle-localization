@@ -12,17 +12,23 @@ import socket
 import struct
 import argparse
 import xml.etree.ElementTree as ET
-from collections import deque
 import yaml
 
 # Parse commang line arguments. These are primarily flags for things likely to change between runs.
 parser = argparse.ArgumentParser(description='Register cameras and phantom to global coordinate frame.')
+parser.add_argument('--use_connection', action='store_true',
+                    help='Attempt to connect to the robot control computer.')
 parser.add_argument('--use_recorded_video', action='store_true',
                     help='Load and process video from file, instead of trying to get live video from webcams.')
 parser.add_argument('--load_video_path', type=str, nargs=1, default='./data/test',
                     help='Path for video to load if --use_recorded_video is specified.')
 args = parser.parse_args()
 globals().update(vars(args))
+
+tree = ET.parse('config.xml')
+root = tree.getroot()
+ip_address = str(root.find("ip").text)
+port = int(root.find("port").text)
 
 STATE_NO_TARGET_POINTS = 0
 STATE_ONE_TARGET_POINT_SET = 1
@@ -68,16 +74,13 @@ def main():
         cap_top = cv2.VideoCapture(str(load_video_path + '/output_top.avi'))
         cap_side = cv2.VideoCapture(str(load_video_path + '/output_side.avi'))
 
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    if use_connection:
+        print('Connecting to ' + ip_address + ' port ' + str(port) + '...')
+        s.connect((ip_address, port))
+
     cal_left = Struct(**yaml.load(file('left.yaml','r')))
     cal_right = Struct(**yaml.load(file('right.yaml', 'r')))
-
-    # mat_left_obj = Struct(**cal_left.camera_matrix)
-    # mat_left = np.reshape(np.array(mat_left_obj.data),(mat_left_obj.rows,mat_left_obj.cols))
-
-
-
-    # mat_right_obj = Struct(**cal_right.camera_matrix)
-    # mat_right = np.reshape(np.array(mat_right_obj.data),(mat_right_obj.rows,mat_right_obj.cols))
 
     mat_left = yaml_to_mat(cal_left.camera_matrix)
     mat_right= yaml_to_mat(cal_right.camera_matrix)
@@ -107,6 +110,7 @@ def main():
     print(mat_left)
     print(dist_left)
 
+    transform_homogeneous = np.zeros((4,4))
 
     while cap_top.isOpened():
         ret, frame_top = cap_top.read()
@@ -117,14 +121,12 @@ def main():
         if cv2.waitKey(10) == ord('q') or frame_top is None or frame_side is None:
             break
 
-
-
         frame_top_markers = frame_top
         frame_side_markers = frame_side
 
         # TODO: Pick three known points in each camera image to define a plane representing the near wall of the phantom
         # TODO: Find the pose of a checkerboard image
-        # TODO: solve for the transform between the checkerboard and the origin of the stereo camera pair
+        # TODO: Solve for the transform between the checkerboard and the origin of the stereo camera pair
 
         gray = cv2.cvtColor(frame_side, cv2.COLOR_BGR2GRAY)
         ret, corners = cv2.findChessboardCorners(gray, (9, 7), None)
@@ -133,18 +135,11 @@ def main():
         if ret == True:
             print("Found corners")
             corners2 = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
-            # print("objp", objp)
-            # print("corners2", corners2)
-
-            # print(len(objp))
-            # print(len(corners2))
 
             # Find the rotation and translation vectors.
             ret, rvecs, tvecs, inliers = cv2.solvePnPRansac(objp, corners2, mat_left, dist_left)
 
             rmat, _ = cv2.Rodrigues(rvecs)
-            # print(rmat)
-            # print(tvecs*0.0060175)
 
             transform_homogeneous = np.concatenate((np.concatenate((rmat, tvecs*0.0060175), axis=1), np.array([[0,0,0,1]])), axis=0)
             print(transform_homogeneous)
@@ -187,10 +182,16 @@ def main():
         cv2.imshow('Camera Side', frame_side_markers)
         # cv2.imshow("Combined", combined)
 
+    if use_connection:
+        s.send(make_OIGTL_homogeneous_tform(transform_homogeneous))
+
     cap_top.release()
     cap_side.release()
 
     cv2.destroyAllWindows()
+
+    if s is not None:
+        s.close()
 
 class Triangulator:
     def __init__(self, P1, P2):
@@ -239,9 +240,6 @@ def get_coords_top(event, x, y, flags, param):
         elif STATE == STATE_SEND_DATA:
             STATE == change_state(STATE, STATE_ONE_TARGET_POINT_SET)
 
-    elif event == cv2.EVENT_MBUTTONDOWN:
-        ESTIMATE_TOP = x, y
-
 def get_coords_side(event, x, y, flags, param):
     global STATE
     global TARGET_SIDE
@@ -254,9 +252,6 @@ def get_coords_side(event, x, y, flags, param):
             STATE == change_state(STATE, STATE_SEND_DATA)
         elif STATE == STATE_SEND_DATA:
             STATE == change_state(STATE, STATE_ONE_TARGET_POINT_SET)
-
-    elif event == cv2.EVENT_MBUTTONDOWN:
-        ESTIMATE_SIDE = x, y
 
 
 def transform_to_robot_coords(input):
@@ -308,6 +303,15 @@ def print_state(current_state):
 
 def make_data_string(data):
     return '%0.3g, %0.3g, %0.3g' % (data[0], data[1], data[2])
+
+def make_OIGTL_homogeneous_tform(input_tform):
+    body = struct.pack('!12f',
+                       float(input_tform((0,0))), float(input_tform((1,0))), float(input_tform((2,0))),
+                       float(input_tform((0, 1))), float(input_tform((1, 1))), float(input_tform((2, 1))),
+                       float(input_tform((0, 2))), float(input_tform((1, 2))), float(input_tform((2, 2))),
+                       float(input_tform((0, 3))), float(input_tform((1, 3))), float(input_tform((2, 3))))
+    bodysize = 48
+    return struct.pack('!H12s20sIIQQ', 1, str('TRANSFORM'), str('SIMULATOR'), int(time.time()), 0, bodysize, 0) + body
 
 
 if __name__ == '__main__':
