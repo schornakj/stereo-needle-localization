@@ -100,6 +100,8 @@ def main():
     objp = np.zeros((7 * 9, 3), np.float32)
     objp[:, :2] = np.mgrid[0:9, 0:7].T.reshape(-1, 2)
 
+    # square edge length (m) = 0.0060175
+
     axis = np.float32([[3, 0, 0], [0, 3, 0], [0, 0, -3]]).reshape(-1, 3)
 
     print(mat_left)
@@ -131,17 +133,21 @@ def main():
         if ret == True:
             print("Found corners")
             corners2 = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
-            print("objp", objp)
-            print("corners2", corners2)
+            # print("objp", objp)
+            # print("corners2", corners2)
 
-            print(len(objp))
-            print(len(corners2))
+            # print(len(objp))
+            # print(len(corners2))
 
             # Find the rotation and translation vectors.
             ret, rvecs, tvecs, inliers = cv2.solvePnPRansac(objp, corners2, mat_left, dist_left)
 
-            print(rvecs)
-            print(tvecs)
+            rmat, _ = cv2.Rodrigues(rvecs)
+            # print(rmat)
+            # print(tvecs*0.0060175)
+
+            transform_homogeneous = np.concatenate((np.concatenate((rmat, tvecs*0.0060175), axis=1), np.array([[0,0,0,1]])), axis=0)
+            print(transform_homogeneous)
 
             # project 3D points to image plane
             imgpts, jac = cv2.projectPoints(axis, rvecs, tvecs, mat_left, dist_left)
