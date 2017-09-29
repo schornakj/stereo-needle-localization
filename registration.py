@@ -22,6 +22,8 @@ parser.add_argument('--use_recorded_video', action='store_true',
                     help='Load and process video from file, instead of trying to get live video from webcams.')
 parser.add_argument('--load_video_path', type=str, nargs=1, default='./data/test',
                     help='Path for video to load if --use_recorded_video is specified.')
+parser.add_argument('--square_size', type=float, nargs=1, default=0.0060175,
+                    help='Calibration checkerboard square edge length')
 args = parser.parse_args()
 globals().update(vars(args))
 
@@ -44,6 +46,8 @@ def main():
     # bashCommand = 'mkdir -p ' + output_path
     # process4 = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
     # cv2.waitKey(100)
+
+    # TODO: Load a primitive rectangular prism representing the phantom
 
     if not use_recorded_video:
         # For both cameras, turn off autofocus and set the same absolute focal depth the one used during calibration.
@@ -124,13 +128,19 @@ def main():
         frame_top_markers = frame_top
         frame_side_markers = frame_side
 
-        # TODO: Pick three known points in each camera image to define a plane representing the near wall of the phantom
+
+        # TODO: Pick three known points on the phantom in the side camera image
+        # TODO: Draw a wireframe box representing the phantom on the side camera image to show phantom registration
+        # Register phantom using solvePnPRansac, with the object points being the coordinates of the mesh vertices
+        # and the image points being the corresponding pixel coordinates in the side camera image.
+        # Need to get a library that does intersections between primitives and rays (trimesh?)
+        # Need a good way to specify phantom dimensions (some kind of config file?) and import
         # TODO: Find the pose of a checkerboard image
         # TODO: Solve for the transform between the checkerboard and the origin of the stereo camera pair
 
+
         gray = cv2.cvtColor(frame_side, cv2.COLOR_BGR2GRAY)
         ret, corners = cv2.findChessboardCorners(gray, (9, 7), None)
-
 
         if ret == True:
             print("Found corners")
@@ -141,7 +151,7 @@ def main():
 
             rmat, _ = cv2.Rodrigues(rvecs)
 
-            transform_homogeneous = np.concatenate((np.concatenate((rmat, tvecs*0.0060175), axis=1), np.array([[0,0,0,1]])), axis=0)
+            transform_homogeneous = np.concatenate((np.concatenate((rmat, tvecs*square_size), axis=1), np.array([[0,0,0,1]])), axis=0)
             print(transform_homogeneous)
 
             # project 3D points to image plane
