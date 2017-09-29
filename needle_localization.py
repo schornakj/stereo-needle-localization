@@ -567,6 +567,7 @@ class plot3dClass(object):
         # plt.draw() maybe you want to see this frame?
 
     def drawNow(self, point):
+
         # self.surf.remove()
         # self.surf = self.ax.plot_surface(
         #     self.X, self.Y, heightR, rstride=1, cstride=1,
