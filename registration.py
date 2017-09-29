@@ -35,9 +35,9 @@ STATE = STATE_NO_TARGET_POINTS
 def main():
     global STATE
 
-    bashCommand = 'mkdir -p ' + output_path
-    process4 = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
-    cv2.waitKey(100)
+    # bashCommand = 'mkdir -p ' + output_path
+    # process4 = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
+    # cv2.waitKey(100)
 
     if not use_recorded_video:
         # For both cameras, turn off autofocus and set the same absolute focal depth the one used during calibration.
@@ -54,12 +54,12 @@ def main():
         process3 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
         cv2.waitKey(100)
 
-        command = 'v4l2-ctl -d /dev/video3 -c focus_auto=0'
-        process5 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
-        cv2.waitKey(100)
-        command = 'v4l2-ctl -d /dev/video3 -c focus_absolute=60'
-        process6 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
-        cv2.waitKey(100)
+        # command = 'v4l2-ctl -d /dev/video3 -c focus_auto=0'
+        # process5 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
+        # cv2.waitKey(100)
+        # command = 'v4l2-ctl -d /dev/video3 -c focus_absolute=60'
+        # process6 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
+        # cv2.waitKey(100)
 
         cap_top = cv2.VideoCapture(1)  # Top camera
         cap_side = cv2.VideoCapture(2)  # Side camera
@@ -71,16 +71,23 @@ def main():
     cal_left = Struct(**yaml.load(file('left.yaml','r')))
     cal_right = Struct(**yaml.load(file('right.yaml', 'r')))
 
-    mat_left_obj = Struct(**cal_left.camera_matrix)
-    mat_left = np.reshape(np.array(mat_left_obj.data),(mat_left_obj.rows,mat_left_obj.cols))
+    # mat_left_obj = Struct(**cal_left.camera_matrix)
+    # mat_left = np.reshape(np.array(mat_left_obj.data),(mat_left_obj.rows,mat_left_obj.cols))
 
-    mat_right_obj = Struct(**cal_right.camera_matrix)
-    mat_right = np.reshape(np.array(mat_right_obj.data),(mat_right_obj.rows,mat_right_obj.cols))
+
+
+    # mat_right_obj = Struct(**cal_right.camera_matrix)
+    # mat_right = np.reshape(np.array(mat_right_obj.data),(mat_right_obj.rows,mat_right_obj.cols))
+
+    mat_left = yaml_to_mat(cal_left.camera_matrix)
+    mat_right= yaml_to_mat(cal_right.camera_matrix)
+    dist_left = yaml_to_mat(cal_left.distortion_coefficients)
+    dist_right = yaml_to_mat(cal_right.distortion_coefficients)
 
     trans_right = np.array([[-0.0016343138898400025], [-0.13299820438398743], [0.1312384027069722]])
     rot_right = np.array([0.9915492807737206, 0.03743949685116827, -0.12421073976371574, 0.12130773650921836, 0.07179373377171916, 0.9900151982945141, 0.04598322368134065, -0.9967165815148494, 0.06664532446634884]).reshape((3,3))
 
-    p1 = np.concatenate((np.dot(mat_right, np.eye(3)), np.dot(mat_right, np.zeros((3,1)))), axis=1)
+    p1 = np.concatenate((np.dot(mat_left, np.eye(3)), np.dot(mat_left, np.zeros((3,1)))), axis=1)
     p2 = np.concatenate((np.dot(mat_right, rot_right), np.dot(mat_right, trans_right)), axis=1)
 
     cv2.namedWindow("Camera Top")
@@ -88,6 +95,15 @@ def main():
 
     cv2.setMouseCallback("Camera Top", get_coords_top)
     cv2.setMouseCallback("Camera Side", get_coords_side)
+
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+    objp = np.zeros((7 * 9, 3), np.float32)
+    objp[:, :2] = np.mgrid[0:9, 0:7].T.reshape(-1, 2)
+
+    axis = np.float32([[3, 0, 0], [0, 3, 0], [0, 0, -3]]).reshape(-1, 3)
+
+    print(mat_left)
+    print(dist_left)
 
 
     while cap_top.isOpened():
@@ -100,12 +116,38 @@ def main():
             break
 
 
-        cv2.imshow('Camera Top', frame_top)
-        cv2.imshow('Camera Side', frame_side)
 
         frame_top_markers = frame_top
         frame_side_markers = frame_side
 
+        # TODO: Pick three known points in each camera image to define a plane representing the near wall of the phantom
+        # TODO: Find the pose of a checkerboard image
+        # TODO: solve for the transform between the checkerboard and the origin of the stereo camera pair
+
+        gray = cv2.cvtColor(frame_side, cv2.COLOR_BGR2GRAY)
+        ret, corners = cv2.findChessboardCorners(gray, (9, 7), None)
+
+
+        if ret == True:
+            print("Found corners")
+            corners2 = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
+            print("objp", objp)
+            print("corners2", corners2)
+
+            print(len(objp))
+            print(len(corners2))
+
+            # Find the rotation and translation vectors.
+            ret, rvecs, tvecs, inliers = cv2.solvePnPRansac(objp, corners2, mat_left, dist_left)
+
+            print(rvecs)
+            print(tvecs)
+
+            # project 3D points to image plane
+            imgpts, jac = cv2.projectPoints(axis, rvecs, tvecs, mat_left, dist_left)
+
+            frame_side_markers = draw(frame_side, corners2, imgpts)
+            cv2.imshow('frame_side_markers', frame_side_markers)
 
         # font = cv2.FONT_HERSHEY_DUPLEX
         # text_color = (0, 255, 0)
@@ -135,8 +177,9 @@ def main():
         combined = np.array(np.concatenate((combined1, combined2), axis=1), dtype=np.uint8)
 
 
-    if s is not None:
-        s.close()
+        cv2.imshow('Camera Top', frame_top_markers)
+        cv2.imshow('Camera Side', frame_side_markers)
+        # cv2.imshow("Combined", combined)
 
     cap_top.release()
     cap_side.release()
@@ -157,10 +200,20 @@ class Triangulator:
                                                     np.array(self._to_float(coords_side)).reshape(2, -1))
         return (pose_3D_homogeneous / pose_3D_homogeneous[3])[0:3]
 
-
 class Struct:
     def __init__(self, **entries):
         self.__dict__.update(entries)
+
+def draw(img, corners, imgpts):
+    corner = tuple(corners[0].ravel())
+    img = cv2.line(img, corner, tuple(imgpts[0].ravel()), (255,0,0), 5)
+    img = cv2.line(img, corner, tuple(imgpts[1].ravel()), (0,255,0), 5)
+    img = cv2.line(img, corner, tuple(imgpts[2].ravel()), (0,0,255), 5)
+    return img
+
+def yaml_to_mat(input):
+    obj = Struct(**input)
+    return np.reshape(np.array(obj.data),(obj.rows,obj.cols))
 
 def draw_target_marker(image, target_coords):
     output = image.copy()
