@@ -13,6 +13,7 @@ import struct
 import argparse
 import xml.etree.ElementTree as ET
 import yaml
+from itertools import product, combinations
 
 # Parse commang line arguments. These are primarily flags for things likely to change between runs.
 parser = argparse.ArgumentParser(description='Register cameras and phantom to global coordinate frame.')
@@ -106,6 +107,16 @@ def main():
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
     objp = np.zeros((7 * 9, 3), np.float32)
     objp[:, :2] = np.mgrid[0:9, 0:7].T.reshape(-1, 2)
+
+
+    # x = [0, 0.1]
+    # y = [0, 0.05]
+    # z = [0, 0.05]
+    # # r = [-0.05, 0.05]
+    # for s, e in combinations(np.array(list(product(x, y, z))), 2):
+    #     # if np.sum(np.abs(s - e)) == r[1] - r[0]:
+    #         # self.ax.plot3D(*zip(s, e), color="b")
+    #     print(s,e)
 
     # square edge length (m) = 0.0060175
 
