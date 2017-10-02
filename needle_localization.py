@@ -105,8 +105,8 @@ def main():
         cap_side = cv2.VideoCapture(2)  # Side camera
     else:
         # If live video isn't available, use recorded insertion video
-        cap_top = cv2.VideoCapture(str(load_video_path + '/output_top.avi'))
-        cap_side = cv2.VideoCapture(str(load_video_path + '/output_side.avi'))
+        cap_top = cv2.VideoCapture(load_video_path[0] + '/output_top.avi')
+        cap_side = cv2.VideoCapture(load_video_path[0] + '/output_side.avi')
 
     cap_aux = cv2.VideoCapture(-1)
 
