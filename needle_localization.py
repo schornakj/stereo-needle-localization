@@ -15,6 +15,16 @@ import xml.etree.ElementTree as ET
 from collections import deque
 import yaml
 
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from matplotlib import cm
+from matplotlib.ticker import LinearLocator, FixedLocator, FormatStrFormatter
+import matplotlib
+
+from itertools import product, combinations
+matplotlib.interactive(True)
+import random
+
 # Parse commang line arguments. These are primarily flags for things likely to change between runs.
 parser = argparse.ArgumentParser(description='Do 3D localization of a needle tip using dense optical flow.')
 parser.add_argument('--use_connection', action='store_true',
@@ -251,6 +261,8 @@ def main():
     triangulator_tip = Triangulator(p1, p2)
     triangulator_target = Triangulator(p1, p2)
 
+    plotter = plot3dClass(5,5)
+
     while cap_top.isOpened():
         ret, camera_top_current_frame = cap_top.read()
         ret, camera_side_current_frame = cap_side.read()
@@ -310,6 +322,7 @@ def main():
             # print('Target tform: ' + str(transform_to_robot_coords(target3D)))
             # print('Delta tform: ' + str(transform_to_robot_coords(delta)))
             #
+            plotter.drawNow(position_tip)
             trajectory.append(transform_to_robot_coords(delta))
             # print("Adding point to path")
             top_path.append(tracker_top.position_tip)
@@ -583,6 +596,45 @@ class TargetTracker:
 class Struct:
     def __init__(self, **entries):
         self.__dict__.update(entries)
+
+class plot3dClass(object):
+    def __init__(self, systemSideLength, lowerCutoffLength ):
+        self.systemSideLength = systemSideLength
+        self.lowerCutoffLength = lowerCutoffLength
+
+        self.fig = plt.figure()
+        self.ax = self.fig.add_subplot(111, projection='3d')
+
+        # rng = np.arange(0, self.systemSideLength, self.lowerCutoffLength)
+        # self.X, self.Y = np.meshgrid(rng, rng)
+
+        self.ax.w_zaxis.set_major_locator(LinearLocator(10))
+        self.ax.w_zaxis.set_major_formatter(FormatStrFormatter('%.03f'))
+
+        # heightR = np.zeros(self.X.shape)
+        # self.surf = self.ax.plot_surface(
+        #     self.X, self.Y, heightR, rstride=1, cstride=1,
+        #     cmap=cm.jet, linewidth=0, antialiased=False)
+        # plt.draw() maybe you want to see this frame?
+
+    def drawNow(self, point):
+
+        # self.surf.remove()
+        # self.surf = self.ax.plot_surface(
+        #     self.X, self.Y, heightR, rstride=1, cstride=1,
+        #     cmap=cm.jet, linewidth=0, antialiased=False)
+
+        r = [-0.05, 0.05]
+        for s, e in combinations(np.array(list(product(r, r, r))), 2):
+            if np.sum(np.abs(s - e)) == r[1] - r[0]:
+                self.ax.plot3D(*zip(s, e), color="b")
+        # print(point)
+        self.ax.scatter(point[0], point[1], point[2], color="r")
+
+        plt.draw()  # redraw the canvas
+
+        self.fig.canvas.flush_events()
+        # time.sleep(1)
 
 def draw_tip_marker(image, roi_center, roi_size, tip_position):
     line_length = 50
