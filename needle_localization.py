@@ -50,6 +50,14 @@ output_prefix = str(root.find("prefix").text)
 hue_target = int(root.find("hue_target").text)
 hue_target_range = int(root.find("hue_target_range").text)
 
+camera_top_focus_absolute = int(root.find("camera_top_focus_absolute").text)
+camera_top_contrast = int(root.find("camera_top_contrast").text)
+camera_top_brightness = int(root.find("camera_top_brightness").text)
+
+camera_side_focus_absolute = int(root.find("camera_side_focus_absolute").text)
+camera_side_contrast = int(root.find("camera_side_contrast").text)
+camera_side_brightness = int(root.find("camera_side_brightness").text)
+
 TARGET_TOP = (int(258), int(246))
 TARGET_SIDE = (int(261), int(230))
 
@@ -94,26 +102,26 @@ def main():
         command = 'v4l2-ctl -d /dev/video1 -c focus_auto=0'
         process = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
         cv2.waitKey(100)
-        command = 'v4l2-ctl -d /dev/video1 -c focus_absolute=20'
+        command = 'v4l2-ctl -d /dev/video1 -c focus_absolute='+str(camera_top_focus_absolute)
         process1 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
         cv2.waitKey(100)
-        command = 'v4l2-ctl -d /dev/video1 -c contrast=180'
+        command = 'v4l2-ctl -d /dev/video1 -c contrast='+str(camera_top_contrast)
         process2 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
         cv2.waitKey(100)
-        command = 'v4l2-ctl -d /dev/video1 -c brightness=180'
+        command = 'v4l2-ctl -d /dev/video1 -c brightness='+str(camera_top_brightness)
         process2 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
         cv2.waitKey(100)
 
         command = 'v4l2-ctl -d /dev/video2 -c focus_auto=0'
         process2 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
         cv2.waitKey(100)
-        command = 'v4l2-ctl -d /dev/video2 -c focus_absolute=30'
+        command = 'v4l2-ctl -d /dev/video2 -c focus_absolute='+str(camera_top_focus_absolute)
         process3 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
         cv2.waitKey(100)
-        command = 'v4l2-ctl -d /dev/video2 -c contrast=180'
+        command = 'v4l2-ctl -d /dev/video2 -c contrast='+str(camera_side_contrast)
         process2 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
         cv2.waitKey(100)
-        command = 'v4l2-ctl -d /dev/video2 -c brightness=180'
+        command = 'v4l2-ctl -d /dev/video2 -c brightness='+str(camera_side_brightness)
         process2 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
         cv2.waitKey(100)
 

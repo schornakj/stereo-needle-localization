@@ -7,4 +7,12 @@
 	<calibration_file>calibration.npz</calibration_file>
 	<hue_target>45</hue_target>
 	<hue_target_range>25</hue_target_range>
+
+	<camera_top_focus_absolute>30</camera_top_focus_absolute>
+	<camera_top_contrast>200</camera_top_contrast>
+	<camera_top_brightness>180</camera_top_brightness>
+
+	<camera_side_focus_absolute>30</camera_side_focus_absolute>
+	<camera_side_contrast>200</camera_side_contrast>
+	<camera_side_brightness>180</camera_side_brightness>
 </data>
