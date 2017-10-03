@@ -13,7 +13,6 @@ import struct
 import argparse
 import xml.etree.ElementTree as ET
 import yaml
-from itertools import product, combinations
 
 # Parse commang line arguments. These are primarily flags for things likely to change between runs.
 parser = argparse.ArgumentParser(description='Register cameras and phantom to global coordinate frame.')
@@ -33,21 +32,8 @@ root = tree.getroot()
 ip_address = str(root.find("ip").text)
 port = int(root.find("port").text)
 
-STATE_NO_TARGET_POINTS = 0
-STATE_ONE_TARGET_POINT_SET = 1
-STATE_SEND_DATA = 2
-STATE_NO_DATA = 3
-
-STATE = STATE_NO_TARGET_POINTS
-
-
 def main():
     global STATE
-
-    # bashCommand = 'mkdir -p ' + output_path
-    # process4 = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
-    # cv2.waitKey(100)
-
     # TODO: Load a primitive rectangular prism representing the phantom
 
     if not use_recorded_video:
@@ -64,13 +50,6 @@ def main():
         command = 'v4l2-ctl -d /dev/video2 -c focus_absolute=40'
         process3 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
         cv2.waitKey(100)
-
-        # command = 'v4l2-ctl -d /dev/video3 -c focus_auto=0'
-        # process5 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
-        # cv2.waitKey(100)
-        # command = 'v4l2-ctl -d /dev/video3 -c focus_absolute=60'
-        # process6 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
-        # cv2.waitKey(100)
 
         cap_top = cv2.VideoCapture(1)  # Top camera
         cap_side = cv2.VideoCapture(2)  # Side camera
@@ -101,9 +80,6 @@ def main():
     cv2.namedWindow("Camera Top")
     cv2.namedWindow("Camera Side")
 
-    cv2.setMouseCallback("Camera Top", get_coords_top)
-    cv2.setMouseCallback("Camera Side", get_coords_side)
-
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
     objp = np.zeros((7 * 9, 3), np.float32)
     objp[:, :2] = np.mgrid[0:9, 0:7].T.reshape(-1, 2)
@@ -130,15 +106,12 @@ def main():
     while cap_top.isOpened():
         ret, frame_top = cap_top.read()
         ret, frame_side = cap_side.read()
-        # ret, aux_frame = cap_aux.read()
-        aux_frame = None
 
         if cv2.waitKey(10) == ord('q') or frame_top is None or frame_side is None:
             break
 
         frame_top_markers = frame_top
         frame_side_markers = frame_side
-
 
         # TODO: Pick three known points on the phantom in the side camera image
         # TODO: Draw a wireframe box representing the phantom on the side camera image to show phantom registration
@@ -171,37 +144,8 @@ def main():
             frame_side_markers = draw(frame_side, corners2, imgpts)
             cv2.imshow('frame_side_markers', frame_side_markers)
 
-        # font = cv2.FONT_HERSHEY_DUPLEX
-        # text_color = (0, 255, 0)
-        data_frame = np.zeros_like(frame_top)
-
-        # cv2.putText(data_frame, 'Delta: ' + make_data_string(transform_to_robot_coords(delta)),
-        #             (10, 50), font, 1, text_color)
-        #
-        # cv2.putText(data_frame, 'Target: ' + make_data_string(transform_to_robot_coords(position_target)),
-        #             (10, 100), font, 1, text_color)
-        #
-        # cv2.putText(data_frame, 'Tip: ' + make_data_string(transform_to_robot_coords(position_tip)),
-        #             (10, 150), font, 1, text_color)
-        #
-        # cv2.putText(data_frame, 'Top  2D: ' + str(tracker_top.position_tip[0]) + ' ' + str(tracker_top.position_tip[1]),
-        #             (10, 200), font, 1, text_color)
-        #
-        # cv2.putText(data_frame,
-        #             'Side 2D: ' + str(tracker_side.position_tip[0]) + ' ' + str(tracker_side.position_tip[1]),
-        #             (10, 250), font, 1, text_color)
-
-
-        combined2 = np.concatenate((data_frame, np.zeros_like(data_frame)), axis=0)
-
-        # if camera_top_with_marker is not None and camera_side_with_marker is not None:
-        combined1 = np.concatenate((frame_top_markers, frame_side_markers), axis=0)
-        combined = np.array(np.concatenate((combined1, combined2), axis=1), dtype=np.uint8)
-
-
         cv2.imshow('Camera Top', frame_top_markers)
         cv2.imshow('Camera Side', frame_side_markers)
-        # cv2.imshow("Combined", combined)
 
     if use_connection:
         s.send(make_OIGTL_homogeneous_tform(transform_homogeneous))
@@ -248,82 +192,8 @@ def draw_target_marker(image, target_coords):
     cv2.circle(output, target_coords, 10, (0, 255, 0))
     return output
 
-def get_coords_top(event, x, y, flags, param):
-    global STATE
-    global TARGET_TOP
-    if event == cv2.EVENT_LBUTTONDOWN:
-        print("Click in top image")
-        TARGET_TOP = x, y
-        if STATE == STATE_NO_TARGET_POINTS:
-            STATE = change_state(STATE, STATE_ONE_TARGET_POINT_SET)
-        elif STATE == STATE_ONE_TARGET_POINT_SET:
-            STATE == change_state(STATE, STATE_SEND_DATA)
-        elif STATE == STATE_SEND_DATA:
-            STATE == change_state(STATE, STATE_ONE_TARGET_POINT_SET)
-
-def get_coords_side(event, x, y, flags, param):
-    global STATE
-    global TARGET_SIDE
-    if event == cv2.EVENT_LBUTTONDOWN:
-        print("Click in side image")
-        TARGET_SIDE = x, y
-        if STATE == STATE_NO_TARGET_POINTS:
-            STATE = change_state(STATE, STATE_ONE_TARGET_POINT_SET)
-        elif STATE == STATE_ONE_TARGET_POINT_SET:
-            STATE == change_state(STATE, STATE_SEND_DATA)
-        elif STATE == STATE_SEND_DATA:
-            STATE == change_state(STATE, STATE_ONE_TARGET_POINT_SET)
-
-
 def transform_to_robot_coords(input):
     return np.array([-input[2], input[1], -input[0]])
-
-def is_within_bounds(input):
-    x_bound = (-60, 80)
-    y_bound = (-40, 40)
-    z_bound = (70, 210)
-
-    if input[0] >= (x_bound[0] and input[0] <= x_bound[1] and input[1] >= y_bound[0] and input[1] <= y_bound[1]
-                    and input[2] >= z_bound[0] and input[2] <= z_bound[1]):
-        print('Within bounds!')
-        return True
-    else:
-        return False
-
-def change_state(current_state, new_state):
-    if current_state == STATE_NO_TARGET_POINTS:
-        if new_state == STATE_ONE_TARGET_POINT_SET:
-            return new_state
-
-    elif current_state == STATE_ONE_TARGET_POINT_SET:
-        if new_state == STATE_SEND_DATA or new_state == STATE_NO_TARGET_POINTS:
-            return new_state
-
-    elif current_state == STATE_SEND_DATA:
-        if new_state == STATE_NO_DATA or new_state == STATE_ONE_TARGET_POINT_SET:
-            return new_state
-
-    elif current_state == STATE_NO_DATA:
-        if new_state == STATE_SEND_DATA or new_state == STATE_ONE_TARGET_POINT_SET:
-            return new_state
-
-    else:
-        return current_state
-
-
-def print_state(current_state):
-    if current_state == STATE_NO_TARGET_POINTS:
-        print('STATE_NO_TARGET_POINTS')
-    elif current_state == STATE_ONE_TARGET_POINT_SET:
-        print('STATE_ONE_TARGET_POINT_SET')
-    elif current_state == STATE_SEND_DATA:
-        print('STATE_SEND_DATA')
-    elif current_state == STATE_NO_DATA:
-        print('STATE_NO_DATA')
-
-
-def make_data_string(data):
-    return '%0.3g, %0.3g, %0.3g' % (data[0], data[1], data[2])
 
 def make_OIGTL_homogeneous_tform(input_tform):
     body = struct.pack('!12f',
