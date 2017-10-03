@@ -87,11 +87,24 @@ def main():
         command = 'v4l2-ctl -d /dev/video1 -c focus_absolute=20'
         process1 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
         cv2.waitKey(100)
+        command = 'v4l2-ctl -d /dev/video1 -c contrast=180'
+        process2 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
+        cv2.waitKey(100)
+        command = 'v4l2-ctl -d /dev/video1 -c brightness=180'
+        process2 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
+        cv2.waitKey(100)
+
         command = 'v4l2-ctl -d /dev/video2 -c focus_auto=0'
         process2 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
         cv2.waitKey(100)
-        command = 'v4l2-ctl -d /dev/video2 -c focus_absolute=40'
+        command = 'v4l2-ctl -d /dev/video2 -c focus_absolute=30'
         process3 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
+        cv2.waitKey(100)
+        command = 'v4l2-ctl -d /dev/video2 -c contrast=180'
+        process2 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
+        cv2.waitKey(100)
+        command = 'v4l2-ctl -d /dev/video2 -c brightness=180'
+        process2 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
         cv2.waitKey(100)
 
         command = 'v4l2-ctl -d /dev/video3 -c focus_auto=0'
@@ -100,6 +113,7 @@ def main():
         command = 'v4l2-ctl -d /dev/video3 -c focus_absolute=60'
         process6 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
         cv2.waitKey(100)
+
 
         cap_top = cv2.VideoCapture(1)  # Top camera
         cap_side = cv2.VideoCapture(2)  # Side camera
@@ -166,10 +180,14 @@ def main():
 
     camera_top_roi_size = (200, 350)
     camera_side_roi_size = (200, 350)
+    # camera_top_roi_size = (camera_top_width, camera_top_height)
+    # camera_side_roi_size = camera_top_roi_size
 
     camera_top_roi_center = (int(camera_top_width * 0.8), camera_top_height / 2)
-
     camera_side_roi_center = (int(camera_side_width * 0.8), camera_side_height / 2)
+
+    # camera_top_roi_center = (camera_top_width/2, camera_top_height/2)
+    # camera_side_roi_center = camera_top_roi_center
 
     delta_last = None
     position_tip_last = None
@@ -217,13 +235,15 @@ def main():
 
     frames_since_update = 0
 
+    # camera_top_farneback_parameters = (0.5, 4, 10, 5, 5, 1.2, 0)
+    # camera_side_farneback_parameters = (0.5, 4, 10, 5, 5, 1.2, 0)
     camera_top_farneback_parameters = (0.5, 4, 10, 5, 5, 1.2, 0)
     camera_side_farneback_parameters = (0.5, 4, 10, 5, 5, 1.2, 0)
 
     tracker_top = TipTracker(camera_top_farneback_parameters, camera_top_width, camera_top_height,
-                             camera_top_expected_heading, 40, camera_top_roi_center, camera_top_roi_size)
+                             camera_top_expected_heading, 40, camera_top_roi_center, camera_top_roi_size, "camera_top")
     tracker_side = TipTracker(camera_side_farneback_parameters, camera_side_width, camera_side_height,
-                              camera_side_expected_heading, 40, camera_side_roi_center, camera_side_roi_size)
+                              camera_side_expected_heading, 40, camera_side_roi_center, camera_side_roi_size, "camera_side")
 
     target_top = TargetTracker(hue_target, hue_target_range, None, TARGET_TOP)
     target_side = TargetTracker(hue_target, hue_target_range, None, TARGET_SIDE)
@@ -243,8 +263,10 @@ def main():
         top_frames.append(camera_top_current_frame)
         side_frames.append(camera_side_current_frame)
 
-        tracker_top.update(top_frames)
+
         tracker_side.update(side_frames)
+        tracker_top.update(top_frames)
+        # cv2.imshow("Diff",cv2.cvtColor(top_frames[0], cv2.COLOR_BGR2GRAY) - cv2.cvtColor(top_frames[-1], cv2.COLOR_BGR2GRAY))
 
         if use_target_segmentation:
             target_top.update(camera_top_current_frame)
@@ -302,6 +324,12 @@ def main():
             print("Sent a transform", str(delta_tform))
         cv2.imshow('Camera Top', camera_top_current_frame)
         cv2.imshow('Camera Side', camera_side_current_frame)
+
+        cv2.imshow("Flow Mag Top", tracker_top.flow_mag)
+        cv2.imshow("Flow Mag Side", tracker_side.flow_mag)
+
+        cv2.imshow("Cam Top Thresh", tracker_top.image_current_gray_thresh)
+        cv2.imshow("Cam Side Thresh", tracker_side.image_current_gray_thresh)
 
         # cv2.imshow('Camera Top bgr', camera_top_bgr)
         # cv2.imshow('Camera Side bgr', camera_side_bgr)
@@ -370,7 +398,7 @@ def main():
 
 class TipTracker:
     def __init__(self, params, image_width, image_height, heading_expected,
-                 heading_range, roi_center_initial, roi_size):
+                 heading_range, roi_center_initial, roi_size, name="camera"):
         self.flow_params = params
         self.heading = heading_expected
         self.heading_range = heading_range
@@ -379,18 +407,36 @@ class TipTracker:
         self.image_width = image_width
         self.image_height = image_height
         self.position_tip = roi_center_initial
+        self.flow_previous = None
+        self.name = name
 
     def _get_section(self, image):
         return image[self.roi_center[1] - self.roi_size[1] / 2:self.roi_center[1] + self.roi_size[1] / 2,
                self.roi_center[0] - self.roi_size[0] / 2:self.roi_center[0] + self.roi_size[0] / 2]
 
     def _get_dense_flow(self, image_past, image_current):
-        flow = cv2.calcOpticalFlowFarneback(cv2.cvtColor(image_past, cv2.COLOR_BGR2GRAY),
-                                            cv2.cvtColor(image_current, cv2.COLOR_BGR2GRAY),
-                                            None,
-                                            self.flow_params[0], self.flow_params[1], self.flow_params[2],
-                                            self.flow_params[3], self.flow_params[4], self.flow_params[5],
-                                            self.flow_params[6])
+        image_past_gray = cv2.cvtColor(image_past, cv2.COLOR_BGR2GRAY)
+        image_current_gray = cv2.cvtColor(image_current, cv2.COLOR_BGR2GRAY)
+        # cv2.imshow(self.name+"_gray",image_current_gray)
+
+        self.image_current_gray_thresh = cv2.inRange(image_current_gray, 0, 100)
+        # cv2.imshow(self.name+"_thresh", image_past_gray_thresh)
+
+        if self.flow_previous is None:
+            flow = cv2.calcOpticalFlowFarneback(image_past_gray,
+                                                image_current_gray,
+                                                None,
+                                                self.flow_params[0], self.flow_params[1], self.flow_params[2],
+                                                self.flow_params[3], self.flow_params[4], self.flow_params[5],
+                                                self.flow_params[6])
+        else:
+            flow = cv2.calcOpticalFlowFarneback(image_past_gray,
+                                                image_current_gray,
+                                                self.flow_previous,
+                                                self.flow_params[0], self.flow_params[1], self.flow_params[2],
+                                                self.flow_params[3], self.flow_params[4], self.flow_params[5],
+                                                self.flow_params[6] + cv2.OPTFLOW_USE_INITIAL_FLOW)
+        self.flow_previous = flow
         flow_magnitude, flow_angle = cv2.cartToPolar(flow[..., 0], flow[..., 1])
 
         hsv = np.zeros_like(image_current)
@@ -399,16 +445,17 @@ class TipTracker:
         hsv[..., 0] = (flow_angle * (180 / np.pi) - 90) * 0.5
         hsv[..., 2] = cv2.normalize(flow_magnitude, None, 0, 255, cv2.NORM_MINMAX)
         bgr = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
-        return hsv, bgr
+        return hsv, bgr, flow_magnitude
 
     def _filter_by_heading(self, flow_hsv):
         min_value = flow_hsv[..., 2].min()
-        max_value = flow_hsv[..., 2].max()
+        # max_value = flow_hsv[..., 2].max()
+        max_value = 255
         mean_value = flow_hsv[..., 2].mean()
 
         heading_insert_bound_lower = ((self.heading - self.heading_range / 2) + 180) % 180
         heading_insert_bound_upper = ((self.heading + self.heading_range / 2) + 180) % 180
-        flow_hsv_insert_bound_lower = np.array([heading_insert_bound_lower, 50, int(max_value * 0.7)])
+        flow_hsv_insert_bound_lower = np.array([heading_insert_bound_lower, 50, int(max_value * 0.8)])
         flow_hsv_insert_bound_upper = np.array([heading_insert_bound_upper, 255, max_value])
 
         mask_insert = cv2.inRange(flow_hsv, flow_hsv_insert_bound_lower, flow_hsv_insert_bound_upper)
@@ -462,7 +509,7 @@ class TipTracker:
         section_current = self._get_section(frame_current)
         section_past = self._get_section(frame_past)
 
-        self.flow_hsv, self.flow_bgr = self._get_dense_flow(section_past, section_current)
+        self.flow_hsv, self.flow_bgr, self.flow_mag = self._get_dense_flow(section_past, section_current)
 
         flow_thresholded = self._filter_by_heading(self.flow_hsv)
 
