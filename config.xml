@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<data>
+	<ip>192.168.0.103</ip>
+	<port>18944</port>
+	<output_dir>./data/</output_dir>
+	<prefix>debug</prefix>
+	<calibration_file>calibration.npz</calibration_file>
+	<hue_target>45</hue_target>
+	<hue_target_range>25</hue_target_range>
+</data>
