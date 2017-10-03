@@ -102,36 +102,14 @@ def main():
         command = 'v4l2-ctl -d /dev/video1 -c focus_auto=0'
         process = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
         cv2.waitKey(100)
-        command = 'v4l2-ctl -d /dev/video1 -c focus_absolute='+str(camera_top_focus_absolute)
+        # command = 'v4l2-ctl -d /dev/video1 -c focus_absolute=' + str(camera_top_focus_absolute)
+        command = 'v4l2-ctl -d /dev/video1 -c focus_auto=0 focus_absolute=' + str(camera_top_focus_absolute)\
+                  + ' contrast='+ str(camera_top_contrast) + ' brightness='+ str(camera_top_brightness)\
+                  + ' -d /dev/video2 -c focus_auto=0 focus_absolute=' + str(camera_side_focus_absolute)\
+                  + ' contrast=' + str(camera_side_contrast) + ' brightness='+ str(camera_side_brightness)\
+                  + ' v4l2-ctl -d /dev/video3 -c focus_auto=0 focus_absolute=60'
         process1 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
         cv2.waitKey(100)
-        command = 'v4l2-ctl -d /dev/video1 -c contrast='+str(camera_top_contrast)
-        process2 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
-        cv2.waitKey(100)
-        command = 'v4l2-ctl -d /dev/video1 -c brightness='+str(camera_top_brightness)
-        process2 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
-        cv2.waitKey(100)
-
-        command = 'v4l2-ctl -d /dev/video2 -c focus_auto=0'
-        process2 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
-        cv2.waitKey(100)
-        command = 'v4l2-ctl -d /dev/video2 -c focus_absolute='+str(camera_top_focus_absolute)
-        process3 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
-        cv2.waitKey(100)
-        command = 'v4l2-ctl -d /dev/video2 -c contrast='+str(camera_side_contrast)
-        process2 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
-        cv2.waitKey(100)
-        command = 'v4l2-ctl -d /dev/video2 -c brightness='+str(camera_side_brightness)
-        process2 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
-        cv2.waitKey(100)
-
-        command = 'v4l2-ctl -d /dev/video3 -c focus_auto=0'
-        process5 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
-        cv2.waitKey(100)
-        command = 'v4l2-ctl -d /dev/video3 -c focus_absolute=60'
-        process6 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
-        cv2.waitKey(100)
-
 
         cap_top = cv2.VideoCapture(1)  # Top camera
         cap_side = cv2.VideoCapture(2)  # Side camera
