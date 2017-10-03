@@ -311,7 +311,7 @@ def main():
             # print('Delta tform: ' + str(transform_to_robot_coords(delta)))
             #
             trajectory.append(transform_to_robot_coords(delta))
-            print("Adding point to path")
+            # print("Adding point to path")
             top_path.append(tracker_top.position_tip)
             side_path.append(tracker_side.position_tip)
 
@@ -409,6 +409,12 @@ class TipTracker:
         self.position_tip = roi_center_initial
         self.flow_previous = None
         self.name = name
+        self.heading_insert_bound_lower = ((self.heading - self.heading_range / 2) + 180) % 180
+        self.heading_insert_bound_upper = ((self.heading + self.heading_range / 2) + 180) % 180
+        self.heading_retract_bound_lower = ((self.heading + 90 - self.heading_range / 2) + 180) % 180
+        self.heading_retract_bound_upper = ((self.heading + 90 + self.heading_range / 2) + 180) % 180
+        print("Insert bounds: " + str(self.heading_insert_bound_lower) + " to " + str(self.heading_insert_bound_upper))
+        print("Retract bounds: " + str(self.heading_retract_bound_lower) + " to " + str(self.heading_retract_bound_upper))
 
     def _get_section(self, image):
         return image[self.roi_center[1] - self.roi_size[1] / 2:self.roi_center[1] + self.roi_size[1] / 2,
@@ -442,7 +448,7 @@ class TipTracker:
         hsv = np.zeros_like(image_current)
         hsv[..., 1] = 255
 
-        hsv[..., 0] = (flow_angle * (180 / np.pi) - 90) * 0.5
+        hsv[..., 0] = ((flow_angle+90) * (180 / np.pi)) * 0.5
         hsv[..., 2] = cv2.normalize(flow_magnitude, None, 0, 255, cv2.NORM_MINMAX)
         bgr = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
         return hsv, bgr, flow_magnitude
@@ -453,17 +459,15 @@ class TipTracker:
         max_value = 255
         mean_value = flow_hsv[..., 2].mean()
 
-        heading_insert_bound_lower = ((self.heading - self.heading_range / 2) + 180) % 180
-        heading_insert_bound_upper = ((self.heading + self.heading_range / 2) + 180) % 180
-        flow_hsv_insert_bound_lower = np.array([heading_insert_bound_lower, 50, int(max_value * 0.8)])
-        flow_hsv_insert_bound_upper = np.array([heading_insert_bound_upper, 255, max_value])
+
+        flow_hsv_insert_bound_lower = np.array([self.heading_insert_bound_lower, 50, int(max_value * 0.8)])
+        flow_hsv_insert_bound_upper = np.array([self.heading_insert_bound_upper, 255, max_value])
 
         mask_insert = cv2.inRange(flow_hsv, flow_hsv_insert_bound_lower, flow_hsv_insert_bound_upper)
 
-        heading_retract_bound_lower = ((self.heading + 90 - self.heading_range / 2) + 180) % 180
-        heading_retract_bound_upper = ((self.heading + 90 + self.heading_range / 2) + 180) % 180
-        flow_hsv_retract_bound_lower = np.array([heading_retract_bound_lower, 50, int(max_value * 0.7)])
-        flow_hsv_retract_bound_upper = np.array([heading_retract_bound_upper, 255, max_value])
+
+        flow_hsv_retract_bound_lower = np.array([self.heading_retract_bound_lower, 50, int(max_value * 0.7)])
+        flow_hsv_retract_bound_upper = np.array([self.heading_retract_bound_upper, 255, max_value])
 
         mask_retract = cv2.inRange(flow_hsv, flow_hsv_retract_bound_lower, flow_hsv_retract_bound_upper)
 
