@@ -23,9 +23,8 @@ import matplotlib
 
 from itertools import product, combinations
 matplotlib.interactive(True)
-import random
 
-# Parse commang line arguments. These are primarily flags for things likely to change between runs.
+# Parse command line arguments. These are options for things likely to change between runs.
 parser = argparse.ArgumentParser(description='Do 3D localization of a needle tip using dense optical flow.')
 parser.add_argument('--use_connection', action='store_true',
                     help='Attempt to connect to the robot control computer.')
@@ -39,16 +38,6 @@ parser.add_argument('--use_target_segmentation', action='store_true',
                     help='Track the target as the largest blob of the color specified in the config file. Default uses manually-picked point.')
 args = parser.parse_args()
 globals().update(vars(args))
-
-# Load xml config file. This is for values that need to be changed but are likely to stay the same for many runs.
-tree = ET.parse('config.xml')
-root = tree.getroot()
-ip_address = str(root.find("ip").text)
-port = int(root.find("port").text)
-output_dir = str(root.find("output_dir").text)
-output_prefix = str(root.find("prefix").text)
-hue_target = int(root.find("hue_target").text)
-hue_target_range = int(root.find("hue_target_range").text)
 
 TARGET_TOP = (int(258), int(246))
 TARGET_SIDE = (int(261), int(230))
@@ -68,11 +57,31 @@ STATE_NO_DATA = 3
 
 STATE = STATE_NO_TARGET_POINTS
 
-
 def main():
     global SEND_MESSAGES
     global STATE
     global load_video_path
+
+    # Load xml config file. This is for values that possibly need to be changed but are likely to stay the same for many runs.
+    tree = ET.parse('config.xml')
+    root = tree.getroot()
+    ip_address = str(root.find("ip").text)
+    port = int(root.find("port").text)
+    output_dir = str(root.find("output_dir").text)
+    output_prefix = str(root.find("prefix").text)
+    hue_target = int(root.find("hue_target").text)
+    hue_target_range = int(root.find("hue_target_range").text)
+
+    camera_top_focus_absolute = int(root.find("camera_top_focus_absolute").text)
+    camera_top_contrast = int(root.find("camera_top_contrast").text)
+    camera_top_brightness = int(root.find("camera_top_brightness").text)
+
+    camera_side_focus_absolute = int(root.find("camera_side_focus_absolute").text)
+    camera_side_contrast = int(root.find("camera_side_contrast").text)
+    camera_side_brightness = int(root.find("camera_side_brightness").text)
+
+    dof_params_top = root.find("dof_top")
+    dof_params_side = root.find("dof_side")
 
     camera_top_expected_heading = 45
     camera_side_expected_heading = 45
@@ -91,39 +100,17 @@ def main():
 
     if not use_recorded_video:
         # For both cameras, turn off autofocus and set the same absolute focal depth the one used during calibration.
-        command = 'v4l2-ctl -d /dev/video1 -c focus_auto=0'
-        process = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
-        cv2.waitKey(100)
-        command = 'v4l2-ctl -d /dev/video1 -c focus_absolute=20'
+        # command = 'v4l2-ctl -d /dev/video1 -c focus_auto=0'
+        # process = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
+        # cv2.waitKey(100)
+        # command = 'v4l2-ctl -d /dev/video1 -c focus_absolute=' + str(camera_top_focus_absolute)
+        command = 'v4l2-ctl -d /dev/video1 -c focus_auto=0 focus_absolute=' + str(camera_top_focus_absolute)\
+                  + ' contrast='+ str(camera_top_contrast) + ' brightness='+ str(camera_top_brightness)\
+                  + ' -d /dev/video2 -c focus_auto=0 focus_absolute=' + str(camera_side_focus_absolute)\
+                  + ' contrast=' + str(camera_side_contrast) + ' brightness='+ str(camera_side_brightness)\
+                  + ' v4l2-ctl -d /dev/video3 -c focus_auto=0 focus_absolute=60'
         process1 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
         cv2.waitKey(100)
-        command = 'v4l2-ctl -d /dev/video1 -c contrast=180'
-        process2 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
-        cv2.waitKey(100)
-        command = 'v4l2-ctl -d /dev/video1 -c brightness=180'
-        process2 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
-        cv2.waitKey(100)
-
-        command = 'v4l2-ctl -d /dev/video2 -c focus_auto=0'
-        process2 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
-        cv2.waitKey(100)
-        command = 'v4l2-ctl -d /dev/video2 -c focus_absolute=30'
-        process3 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
-        cv2.waitKey(100)
-        command = 'v4l2-ctl -d /dev/video2 -c contrast=180'
-        process2 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
-        cv2.waitKey(100)
-        command = 'v4l2-ctl -d /dev/video2 -c brightness=180'
-        process2 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
-        cv2.waitKey(100)
-
-        command = 'v4l2-ctl -d /dev/video3 -c focus_auto=0'
-        process5 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
-        cv2.waitKey(100)
-        command = 'v4l2-ctl -d /dev/video3 -c focus_absolute=60'
-        process6 = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
-        cv2.waitKey(100)
-
 
         cap_top = cv2.VideoCapture(1)  # Top camera
         cap_side = cv2.VideoCapture(2)  # Side camera
@@ -184,7 +171,6 @@ def main():
     # camera_top_last_frame = cv2.undistort(camera_top_last_frame, CameraMatrix1, DistCoeffs1)
     # camera_side_last_frame = cv2.undistort(camera_side_last_frame, CameraMatrix2, DistCoeffs2)
 
-    # codecArr = 'LAGS'  # Lagarith Lossless Codec
     camera_top_height, camera_top_width, channels = camera_top_last_frame.shape
     camera_side_height, camera_side_width, channels = camera_side_last_frame.shape
 
@@ -245,15 +231,28 @@ def main():
 
     frames_since_update = 0
 
-    # camera_top_farneback_parameters = (0.5, 4, 10, 5, 5, 1.2, 0)
-    # camera_side_farneback_parameters = (0.5, 4, 10, 5, 5, 1.2, 0)
-    camera_top_farneback_parameters = (0.5, 4, 10, 5, 5, 1.2, 0)
-    camera_side_farneback_parameters = (0.5, 4, 10, 5, 5, 1.2, 0)
+    camera_top_farneback_parameters = (float(dof_params_top.find("pyr_scale").text),
+                                       int(dof_params_top.find("levels").text),
+                                       int(dof_params_top.find("winsize").text),
+                                       int(dof_params_top.find("iterations").text),
+                                       int(dof_params_top.find("poly_n").text),
+                                       float(dof_params_top.find("poly_sigma").text),
+                                       0)
+
+    camera_side_farneback_parameters = (float(dof_params_side.find("pyr_scale").text),
+                                       int(dof_params_side.find("levels").text),
+                                       int(dof_params_side.find("winsize").text),
+                                       int(dof_params_side.find("iterations").text),
+                                       int(dof_params_side.find("poly_n").text),
+                                       float(dof_params_side.find("poly_sigma").text),
+                                       0)
 
     tracker_top = TipTracker(camera_top_farneback_parameters, camera_top_width, camera_top_height,
-                             camera_top_expected_heading, 40, camera_top_roi_center, camera_top_roi_size, "camera_top")
+                             camera_top_expected_heading, 40, camera_top_roi_center, camera_top_roi_size,
+                             int(root.find("kernel_top").text), "camera_top")
     tracker_side = TipTracker(camera_side_farneback_parameters, camera_side_width, camera_side_height,
-                              camera_side_expected_heading, 40, camera_side_roi_center, camera_side_roi_size, "camera_side")
+                              camera_side_expected_heading, 40, camera_side_roi_center, camera_side_roi_size,
+                              int(root.find("kernel_side").text), "camera_side")
 
     target_top = TargetTracker(hue_target, hue_target_range, None, TARGET_TOP)
     target_side = TargetTracker(hue_target, hue_target_range, None, TARGET_SIDE)
@@ -275,10 +274,8 @@ def main():
         top_frames.append(camera_top_current_frame)
         side_frames.append(camera_side_current_frame)
 
-
         tracker_side.update(side_frames)
         tracker_top.update(top_frames)
-        # cv2.imshow("Diff",cv2.cvtColor(top_frames[0], cv2.COLOR_BGR2GRAY) - cv2.cvtColor(top_frames[-1], cv2.COLOR_BGR2GRAY))
 
         if use_target_segmentation:
             target_top.update(camera_top_current_frame)
@@ -344,9 +341,6 @@ def main():
         cv2.imshow("Cam Top Thresh", tracker_top.image_current_gray_thresh)
         cv2.imshow("Cam Side Thresh", tracker_side.image_current_gray_thresh)
 
-        # cv2.imshow('Camera Top bgr', camera_top_bgr)
-        # cv2.imshow('Camera Side bgr', camera_side_bgr)
-
         font = cv2.FONT_HERSHEY_DUPLEX
         text_color = (0, 255, 0)
         data_frame = np.zeros_like(camera_top_with_marker)
@@ -375,8 +369,6 @@ def main():
         out_top.write(camera_top_current_frame)
         out_side.write(camera_side_current_frame)
 
-        #TODO: Fix likely data type issue that prevents combined video from being saved
-        # if camera_top_with_marker is not None and camera_side_with_marker is not None:
         combined1 = np.concatenate((camera_top_with_marker, camera_side_with_marker), axis=0)
         combined = np.array(np.concatenate((combined1, combined2), axis=1), dtype=np.uint8)
 
@@ -411,7 +403,7 @@ def main():
 
 class TipTracker:
     def __init__(self, params, image_width, image_height, heading_expected,
-                 heading_range, roi_center_initial, roi_size, name="camera"):
+                 heading_range, roi_center_initial, roi_size, kernel_size, name="camera"):
         self.flow_params = params
         self.heading = heading_expected
         self.heading_range = heading_range
@@ -422,6 +414,7 @@ class TipTracker:
         self.position_tip = roi_center_initial
         self.flow_previous = None
         self.name = name
+        self.kernel_size = kernel_size
         self.heading_insert_bound_lower = ((self.heading - self.heading_range / 2) + 180) % 180
         self.heading_insert_bound_upper = ((self.heading + self.heading_range / 2) + 180) % 180
         self.heading_retract_bound_lower = ((self.heading + 90 - self.heading_range / 2) + 180) % 180
@@ -486,7 +479,7 @@ class TipTracker:
 
         mask = cv2.bitwise_or(mask_insert, mask_retract)
 
-        kernel = np.ones((7, 7), np.uint8)
+        kernel = np.ones((self.kernel_size, self.kernel_size), np.uint8)
         erosion = cv2.erode(mask, kernel, iterations=1)
         dilate = cv2.dilate(erosion, kernel, iterations=1)
 
