@@ -300,6 +300,10 @@ def main():
 
         delta = position_target - position_tip
         delta_tform = transform_to_robot_coords(delta)
+        rotation_tip = np.eye(3)
+
+        pose_tip = make_homogeneous_tform(rotation=rotation_tip, translation=position_tip)
+        pose_target = make_homogeneous_tform(translation=position_tip)
 
         if delta_last is not None:
             if not np.array_equal(delta, delta_last):
@@ -328,10 +332,12 @@ def main():
         camera_top_with_marker = draw_tip_path(camera_top_with_marker, top_path)
         camera_side_with_marker = draw_tip_path(camera_side_with_marker, side_path)
 
-        # Send the message to the needle guidance robot controller
+        # print("Pose tip", pose_tip)
+        # print("Pose target", pose_target)
         if use_connection and SEND_MESSAGES:
-            s.send(compose_OpenIGTLink_message(delta_tform))
-            print("Sent a transform", str(delta_tform))
+            s.send(compose_OpenIGTLink_message(pose_tip))
+            s.send(compose_OpenIGTLink_message(pose_target))
+
         cv2.imshow('Camera Top', camera_top_current_frame)
         cv2.imshow('Camera Side', camera_side_current_frame)
 
@@ -703,6 +709,12 @@ def is_within_bounds(input):
     else:
         return False
 
+def make_homogeneous_tform(rotation=np.eye(3), translation=np.zeros((3,1))):
+    # TODO: Make this smarter for different types of inputs, or find a built-in in numpy or opencv
+    homogeneous = np.eye(4)
+    homogeneous[0:3, 0:3] = rotation
+    homogeneous[0:3, 3] = translation[:,0]
+    return homogeneous
 
 def compose_OpenIGTLink_message(input_tform):
     body = struct.pack('!12f',
