@@ -22,7 +22,7 @@
 	<dof_top>
 		<pyr_scale>0.5</pyr_scale>
 		<levels>4</levels>
-		<winsize>15</winsize>
+		<winsize>10</winsize>
 		<iterations>5</iterations>
 		<poly_n>5</poly_n>
 		<poly_sigma>1.2</poly_sigma>
@@ -30,7 +30,7 @@
 	<dof_side>
 		<pyr_scale>0.5</pyr_scale>
 		<levels>4</levels>
-		<winsize>15</winsize>
+		<winsize>10</winsize>
 		<iterations>5</iterations>
 		<poly_n>5</poly_n>
 		<poly_sigma>1.2</poly_sigma>
