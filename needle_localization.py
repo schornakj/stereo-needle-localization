@@ -83,8 +83,8 @@ def main():
     dof_params_top = root.find("dof_top")
     dof_params_side = root.find("dof_side")
 
-    camera_top_expected_heading = 45
-    camera_side_expected_heading = 45
+    # camera_top_expected_heading = 45
+    # camera_side_expected_heading = 45
 
     output_path = output_dir + output_prefix + '_' + time.strftime("%Y_%m_%d_%H_%M_%S")
     print(output_path)
@@ -248,12 +248,13 @@ def main():
                                        0)
 
     tracker_top = TipTracker(camera_top_farneback_parameters, camera_top_width, camera_top_height,
-                             camera_top_expected_heading, 40, camera_top_roi_center, camera_top_roi_size,
-                             int(root.find("kernel_top").text), "camera_top")
+                             hue_target, hue_target_range, camera_top_roi_center, camera_top_roi_size,
+                             int(root.find("kernel_top").text), "camera_top", verbose=False)
     tracker_side = TipTracker(camera_side_farneback_parameters, camera_side_width, camera_side_height,
-                              camera_side_expected_heading, 40, camera_side_roi_center, camera_side_roi_size,
-                              int(root.find("kernel_side").text), "camera_side")
+                              hue_target, hue_target_range, camera_side_roi_center, camera_side_roi_size,
+                              int(root.find("kernel_side").text), "camera_side", verbose=True)
 
+    print("Hue target: " + str(hue_target) + " Range: " + str(hue_target_range))
     target_top = TargetTracker(hue_target, hue_target_range, None, TARGET_TOP)
     target_side = TargetTracker(hue_target, hue_target_range, None, TARGET_SIDE)
 
@@ -401,7 +402,7 @@ def main():
     cv2.destroyAllWindows()
 
     trajectoryArray = np.array(trajectory)
-    print(trajectoryArray)
+    # print(trajectoryArray)
     np.savetxt(output_path + "/trajectory.csv", trajectoryArray, delimiter=",")
     np.savez_compressed(output_path + "/trajectory.npz", trajectory=trajectoryArray,
                         top_path=np.array(top_path), side_path=np.array(side_path))
@@ -409,7 +410,8 @@ def main():
 
 class TipTracker:
     def __init__(self, params, image_width, image_height, heading_expected,
-                 heading_range, roi_center_initial, roi_size, kernel_size, name="camera"):
+                 heading_range, roi_center_initial, roi_size, kernel_size, name="camera", verbose=False):
+
         self.flow_params = params
         self.heading = heading_expected
         self.heading_range = heading_range
@@ -421,12 +423,26 @@ class TipTracker:
         self.flow_previous = None
         self.name = name
         self.kernel_size = kernel_size
-        self.heading_insert_bound_lower = ((self.heading - self.heading_range / 2) + 180) % 180
-        self.heading_insert_bound_upper = ((self.heading + self.heading_range / 2) + 180) % 180
-        self.heading_retract_bound_lower = ((self.heading + 90 - self.heading_range / 2) + 180) % 180
-        self.heading_retract_bound_upper = ((self.heading + 90 + self.heading_range / 2) + 180) % 180
-        print("Insert bounds: " + str(self.heading_insert_bound_lower) + " to " + str(self.heading_insert_bound_upper))
-        print("Retract bounds: " + str(self.heading_retract_bound_lower) + " to " + str(self.heading_retract_bound_upper))
+        self.verbose = verbose
+
+        self.heading_insert_bound_lower = (self.heading - (self.heading_range / 2))%180
+        self.heading_insert_bound_upper = (self.heading + (self.heading_range / 2))%180
+        self.heading_retract_bound_lower = (self.heading + 90 - self.heading_range / 2)%180
+        self.heading_retract_bound_upper = (self.heading + 90 + self.heading_range / 2)%180
+        if verbose:
+            print("Insert bounds: " + str(self.heading_insert_bound_lower) + " to " + str(self.heading_insert_bound_upper))
+            print("Retract bounds: " + str(self.heading_retract_bound_lower) + " to " + str(self.heading_retract_bound_upper))
+            self._show_hue_range(self.heading_insert_bound_lower, self.heading_insert_bound_upper,"insert")
+            self._show_hue_range(self.heading_retract_bound_lower, self.heading_retract_bound_upper, "retract")
+
+    def _show_hue_range(self, bound_lower, bound_upper, tag):
+        color_range = np.array(np.zeros((500,50,3)),dtype=np.uint8)
+        step_count = bound_upper - bound_lower
+        step_size = 500/(step_count)
+        for value in range(0,step_count):
+            color_range[value*step_size:(value+1)*step_size,:,:]=(bound_lower+value, 200, 200)
+        color_range_bgr = cv2.cvtColor(color_range, cv2.COLOR_HSV2BGR)
+        cv2.imshow(self.name+"_range_"+tag, color_range_bgr)
 
     def _get_section(self, image):
         return image[self.roi_center[1] - self.roi_size[1] / 2:self.roi_center[1] + self.roi_size[1] / 2,
@@ -453,14 +469,14 @@ class TipTracker:
                                                 self.flow_previous,
                                                 self.flow_params[0], self.flow_params[1], self.flow_params[2],
                                                 self.flow_params[3], self.flow_params[4], self.flow_params[5],
-                                                self.flow_params[6] + cv2.OPTFLOW_USE_INITIAL_FLOW)
+                                                self.flow_params[6])# + cv2.OPTFLOW_USE_INITIAL_FLOW)
         self.flow_previous = flow
         flow_magnitude, flow_angle = cv2.cartToPolar(flow[..., 0], flow[..., 1])
 
         hsv = np.zeros_like(image_current)
         hsv[..., 1] = 255
 
-        hsv[..., 0] = ((flow_angle+90) * (180 / np.pi)) * 0.5
+        hsv[..., 0] = ((flow_angle+90)%360 * (180 / np.pi)) * 0.5
         hsv[..., 2] = cv2.normalize(flow_magnitude, None, 0, 255, cv2.NORM_MINMAX)
         bgr = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
         return hsv, bgr, flow_magnitude
@@ -472,16 +488,16 @@ class TipTracker:
         mean_value = flow_hsv[..., 2].mean()
 
 
-        flow_hsv_insert_bound_lower = np.array([self.heading_insert_bound_lower, 50, int(max_value * 0.8)])
+        flow_hsv_insert_bound_lower = np.array([self.heading_insert_bound_lower, 50, int(max_value * 0.7)])
         flow_hsv_insert_bound_upper = np.array([self.heading_insert_bound_upper, 255, max_value])
 
         mask_insert = cv2.inRange(flow_hsv, flow_hsv_insert_bound_lower, flow_hsv_insert_bound_upper)
-
 
         flow_hsv_retract_bound_lower = np.array([self.heading_retract_bound_lower, 50, int(max_value * 0.7)])
         flow_hsv_retract_bound_upper = np.array([self.heading_retract_bound_upper, 255, max_value])
 
         mask_retract = cv2.inRange(flow_hsv, flow_hsv_retract_bound_lower, flow_hsv_retract_bound_upper)
+        # mask_retract = np.zeros_like(mask_insert)
 
         mask = cv2.bitwise_or(mask_insert, mask_retract)
 
