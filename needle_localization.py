@@ -705,8 +705,11 @@ def is_within_bounds(input):
 
 
 def compose_OpenIGTLink_message(input_tform):
-    body = struct.pack('!12f', 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0,
-                       float(input_tform[0]), float(input_tform[1]), float(input_tform[2]))
+    body = struct.pack('!12f',
+                       float(input_tform((0,0))), float(input_tform((1,0))), float(input_tform((2,0))),
+                       float(input_tform((0, 1))), float(input_tform((1, 1))), float(input_tform((2, 1))),
+                       float(input_tform((0, 2))), float(input_tform((1, 2))), float(input_tform((2, 2))),
+                       float(input_tform((0, 3))), float(input_tform((1, 3))), float(input_tform((2, 3))))
     bodysize = 48
     return struct.pack('!H12s20sIIQQ', 1, str('TRANSFORM'), str('SIMULATOR'), int(time.time()), 0, bodysize, 0) + body
 
