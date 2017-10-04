@@ -58,6 +58,9 @@ camera_side_focus_absolute = int(root.find("camera_side_focus_absolute").text)
 camera_side_contrast = int(root.find("camera_side_contrast").text)
 camera_side_brightness = int(root.find("camera_side_brightness").text)
 
+dof_params_top = root.find("dof_top")
+dof_params_side = root.find("dof_side")
+
 TARGET_TOP = (int(258), int(246))
 TARGET_SIDE = (int(261), int(230))
 
@@ -233,13 +236,29 @@ def main():
 
     # camera_top_farneback_parameters = (0.5, 4, 10, 5, 5, 1.2, 0)
     # camera_side_farneback_parameters = (0.5, 4, 10, 5, 5, 1.2, 0)
-    camera_top_farneback_parameters = (0.5, 4, 10, 5, 5, 1.2, 0)
-    camera_side_farneback_parameters = (0.5, 4, 10, 5, 5, 1.2, 0)
+    # camera_top_farneback_parameters = (0.5, 4, 15, 5, 5, 1.2, 0)
+    camera_top_farneback_parameters = (float(dof_params_top.find("pyr_scale").text),
+                                       int(dof_params_top.find("levels").text),
+                                       int(dof_params_top.find("winsize").text),
+                                       int(dof_params_top.find("iterations").text),
+                                       int(dof_params_top.find("poly_n").text),
+                                       float(dof_params_top.find("poly_sigma").text),
+                                       0)
+    # camera_side_farneback_parameters = (0.5, 4, 15, 5, 5, 1.2, 0)
+    camera_side_farneback_parameters = (float(dof_params_side.find("pyr_scale").text),
+                                       int(dof_params_side.find("levels").text),
+                                       int(dof_params_side.find("winsize").text),
+                                       int(dof_params_side.find("iterations").text),
+                                       int(dof_params_side.find("poly_n").text),
+                                       float(dof_params_side.find("poly_sigma").text),
+                                       0)
 
     tracker_top = TipTracker(camera_top_farneback_parameters, camera_top_width, camera_top_height,
-                             camera_top_expected_heading, 40, camera_top_roi_center, camera_top_roi_size, "camera_top")
+                             camera_top_expected_heading, 40, camera_top_roi_center, camera_top_roi_size,
+                             int(root.find("kernel_top").text), "camera_top")
     tracker_side = TipTracker(camera_side_farneback_parameters, camera_side_width, camera_side_height,
-                              camera_side_expected_heading, 40, camera_side_roi_center, camera_side_roi_size, "camera_side")
+                              camera_side_expected_heading, 40, camera_side_roi_center, camera_side_roi_size,
+                              int(root.find("kernel_side").text), "camera_side")
 
     target_top = TargetTracker(hue_target, hue_target_range, None, TARGET_TOP)
     target_side = TargetTracker(hue_target, hue_target_range, None, TARGET_SIDE)
@@ -397,7 +416,7 @@ def main():
 
 class TipTracker:
     def __init__(self, params, image_width, image_height, heading_expected,
-                 heading_range, roi_center_initial, roi_size, name="camera"):
+                 heading_range, roi_center_initial, roi_size, kernel_size, name="camera"):
         self.flow_params = params
         self.heading = heading_expected
         self.heading_range = heading_range
@@ -408,6 +427,7 @@ class TipTracker:
         self.position_tip = roi_center_initial
         self.flow_previous = None
         self.name = name
+        self.kernel_size = kernel_size
         self.heading_insert_bound_lower = ((self.heading - self.heading_range / 2) + 180) % 180
         self.heading_insert_bound_upper = ((self.heading + self.heading_range / 2) + 180) % 180
         self.heading_retract_bound_lower = ((self.heading + 90 - self.heading_range / 2) + 180) % 180
@@ -472,7 +492,7 @@ class TipTracker:
 
         mask = cv2.bitwise_or(mask_insert, mask_retract)
 
-        kernel = np.ones((7, 7), np.uint8)
+        kernel = np.ones((self.kernel_size, self.kernel_size), np.uint8)
         erosion = cv2.erode(mask, kernel, iterations=1)
         dilate = cv2.dilate(erosion, kernel, iterations=1)
 

@@ -3,16 +3,36 @@
 	<ip>192.168.0.103</ip>
 	<port>18944</port>
 	<output_dir>./data/</output_dir>
-	<prefix>debug</prefix>
+	<prefix>heterogeneous</prefix>
 	<calibration_file>calibration.npz</calibration_file>
 	<hue_target>45</hue_target>
 	<hue_target_range>25</hue_target_range>
 
-	<camera_top_focus_absolute>30</camera_top_focus_absolute>
+	<camera_top_focus_absolute>20</camera_top_focus_absolute>
 	<camera_top_contrast>200</camera_top_contrast>
 	<camera_top_brightness>180</camera_top_brightness>
 
-	<camera_side_focus_absolute>30</camera_side_focus_absolute>
+	<camera_side_focus_absolute>20</camera_side_focus_absolute>
 	<camera_side_contrast>200</camera_side_contrast>
 	<camera_side_brightness>180</camera_side_brightness>
+
+	<kernel_top>5</kernel_top>
+	<kernel_side>5</kernel_side>
+
+	<dof_top>
+		<pyr_scale>0.5</pyr_scale>
+		<levels>4</levels>
+		<winsize>15</winsize>
+		<iterations>5</iterations>
+		<poly_n>5</poly_n>
+		<poly_sigma>1.2</poly_sigma>
+	</dof_top>
+	<dof_side>
+		<pyr_scale>0.5</pyr_scale>
+		<levels>4</levels>
+		<winsize>15</winsize>
+		<iterations>5</iterations>
+		<poly_n>5</poly_n>
+		<poly_sigma>1.2</poly_sigma>
+	</dof_side>
 </data>
