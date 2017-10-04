@@ -23,9 +23,8 @@ import matplotlib
 
 from itertools import product, combinations
 matplotlib.interactive(True)
-import random
 
-# Parse commang line arguments. These are primarily flags for things likely to change between runs.
+# Parse command line arguments. These are options for things likely to change between runs.
 parser = argparse.ArgumentParser(description='Do 3D localization of a needle tip using dense optical flow.')
 parser.add_argument('--use_connection', action='store_true',
                     help='Attempt to connect to the robot control computer.')
@@ -40,7 +39,7 @@ parser.add_argument('--use_target_segmentation', action='store_true',
 args = parser.parse_args()
 globals().update(vars(args))
 
-# Load xml config file. This is for values that need to be changed but are likely to stay the same for many runs.
+# Load xml config file. This is for values that possibly need to be changed but are likely to stay the same for many runs.
 tree = ET.parse('config.xml')
 root = tree.getroot()
 ip_address = str(root.find("ip").text)
@@ -173,7 +172,6 @@ def main():
     # camera_top_last_frame = cv2.undistort(camera_top_last_frame, CameraMatrix1, DistCoeffs1)
     # camera_side_last_frame = cv2.undistort(camera_side_last_frame, CameraMatrix2, DistCoeffs2)
 
-    # codecArr = 'LAGS'  # Lagarith Lossless Codec
     camera_top_height, camera_top_width, channels = camera_top_last_frame.shape
     camera_side_height, camera_side_width, channels = camera_side_last_frame.shape
 
@@ -234,9 +232,6 @@ def main():
 
     frames_since_update = 0
 
-    # camera_top_farneback_parameters = (0.5, 4, 10, 5, 5, 1.2, 0)
-    # camera_side_farneback_parameters = (0.5, 4, 10, 5, 5, 1.2, 0)
-    # camera_top_farneback_parameters = (0.5, 4, 15, 5, 5, 1.2, 0)
     camera_top_farneback_parameters = (float(dof_params_top.find("pyr_scale").text),
                                        int(dof_params_top.find("levels").text),
                                        int(dof_params_top.find("winsize").text),
@@ -244,7 +239,7 @@ def main():
                                        int(dof_params_top.find("poly_n").text),
                                        float(dof_params_top.find("poly_sigma").text),
                                        0)
-    # camera_side_farneback_parameters = (0.5, 4, 15, 5, 5, 1.2, 0)
+
     camera_side_farneback_parameters = (float(dof_params_side.find("pyr_scale").text),
                                        int(dof_params_side.find("levels").text),
                                        int(dof_params_side.find("winsize").text),
@@ -280,10 +275,8 @@ def main():
         top_frames.append(camera_top_current_frame)
         side_frames.append(camera_side_current_frame)
 
-
         tracker_side.update(side_frames)
         tracker_top.update(top_frames)
-        # cv2.imshow("Diff",cv2.cvtColor(top_frames[0], cv2.COLOR_BGR2GRAY) - cv2.cvtColor(top_frames[-1], cv2.COLOR_BGR2GRAY))
 
         if use_target_segmentation:
             target_top.update(camera_top_current_frame)
@@ -349,9 +342,6 @@ def main():
         cv2.imshow("Cam Top Thresh", tracker_top.image_current_gray_thresh)
         cv2.imshow("Cam Side Thresh", tracker_side.image_current_gray_thresh)
 
-        # cv2.imshow('Camera Top bgr', camera_top_bgr)
-        # cv2.imshow('Camera Side bgr', camera_side_bgr)
-
         font = cv2.FONT_HERSHEY_DUPLEX
         text_color = (0, 255, 0)
         data_frame = np.zeros_like(camera_top_with_marker)
@@ -380,8 +370,6 @@ def main():
         out_top.write(camera_top_current_frame)
         out_side.write(camera_side_current_frame)
 
-        #TODO: Fix likely data type issue that prevents combined video from being saved
-        # if camera_top_with_marker is not None and camera_side_with_marker is not None:
         combined1 = np.concatenate((camera_top_with_marker, camera_side_with_marker), axis=0)
         combined = np.array(np.concatenate((combined1, combined2), axis=1), dtype=np.uint8)
 
