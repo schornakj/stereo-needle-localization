@@ -39,27 +39,6 @@ parser.add_argument('--use_target_segmentation', action='store_true',
 args = parser.parse_args()
 globals().update(vars(args))
 
-# Load xml config file. This is for values that possibly need to be changed but are likely to stay the same for many runs.
-tree = ET.parse('config.xml')
-root = tree.getroot()
-ip_address = str(root.find("ip").text)
-port = int(root.find("port").text)
-output_dir = str(root.find("output_dir").text)
-output_prefix = str(root.find("prefix").text)
-hue_target = int(root.find("hue_target").text)
-hue_target_range = int(root.find("hue_target_range").text)
-
-camera_top_focus_absolute = int(root.find("camera_top_focus_absolute").text)
-camera_top_contrast = int(root.find("camera_top_contrast").text)
-camera_top_brightness = int(root.find("camera_top_brightness").text)
-
-camera_side_focus_absolute = int(root.find("camera_side_focus_absolute").text)
-camera_side_contrast = int(root.find("camera_side_contrast").text)
-camera_side_brightness = int(root.find("camera_side_brightness").text)
-
-dof_params_top = root.find("dof_top")
-dof_params_side = root.find("dof_side")
-
 TARGET_TOP = (int(258), int(246))
 TARGET_SIDE = (int(261), int(230))
 
@@ -78,11 +57,31 @@ STATE_NO_DATA = 3
 
 STATE = STATE_NO_TARGET_POINTS
 
-
 def main():
     global SEND_MESSAGES
     global STATE
     global load_video_path
+
+    # Load xml config file. This is for values that possibly need to be changed but are likely to stay the same for many runs.
+    tree = ET.parse('config.xml')
+    root = tree.getroot()
+    ip_address = str(root.find("ip").text)
+    port = int(root.find("port").text)
+    output_dir = str(root.find("output_dir").text)
+    output_prefix = str(root.find("prefix").text)
+    hue_target = int(root.find("hue_target").text)
+    hue_target_range = int(root.find("hue_target_range").text)
+
+    camera_top_focus_absolute = int(root.find("camera_top_focus_absolute").text)
+    camera_top_contrast = int(root.find("camera_top_contrast").text)
+    camera_top_brightness = int(root.find("camera_top_brightness").text)
+
+    camera_side_focus_absolute = int(root.find("camera_side_focus_absolute").text)
+    camera_side_contrast = int(root.find("camera_side_contrast").text)
+    camera_side_brightness = int(root.find("camera_side_brightness").text)
+
+    dof_params_top = root.find("dof_top")
+    dof_params_side = root.find("dof_side")
 
     camera_top_expected_heading = 45
     camera_side_expected_heading = 45
@@ -101,9 +100,9 @@ def main():
 
     if not use_recorded_video:
         # For both cameras, turn off autofocus and set the same absolute focal depth the one used during calibration.
-        command = 'v4l2-ctl -d /dev/video1 -c focus_auto=0'
-        process = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
-        cv2.waitKey(100)
+        # command = 'v4l2-ctl -d /dev/video1 -c focus_auto=0'
+        # process = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
+        # cv2.waitKey(100)
         # command = 'v4l2-ctl -d /dev/video1 -c focus_absolute=' + str(camera_top_focus_absolute)
         command = 'v4l2-ctl -d /dev/video1 -c focus_auto=0 focus_absolute=' + str(camera_top_focus_absolute)\
                   + ' contrast='+ str(camera_top_contrast) + ' brightness='+ str(camera_top_brightness)\
