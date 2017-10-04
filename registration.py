@@ -147,7 +147,7 @@ def main():
 
 
         markers_phantom = find_phantom_markers(frame_side)
-        points_phantom = np.array([[0,0,0],[0,2*2.54,0],[1.5*2.54,0,0], [3*2.54,0,0]],dtype=np.float32)
+        points_phantom = np.array([[0,0,0],[0,5.16,0],[3.9,0,0], [7.75,0,0]],dtype=np.float32)
 
         # print("object points",points_phantom)
         # print("markers",markers_phantom)
