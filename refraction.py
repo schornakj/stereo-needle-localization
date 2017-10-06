@@ -1,6 +1,5 @@
 import trimesh
 import numpy as np
-from shapely.geometry import LineString
 
 transform = np.eye(4)
 transform[0,3]=1
@@ -15,15 +14,11 @@ triangles, rays, locations = mesh.ray.intersects_id(ray_origin, ray_direction, r
 distances = []
 for i, location in enumerate(locations):
     distance = np.linalg.norm(location - ray_origin)
-    print(distance)
-    print(location)
     distances.append(distance)
-triangles_sorted = sorted(zip(distances, triangles, locations), key=lambda x: x[0], reverse=False)
 
-print(triangles_sorted)
+intersections_sorted = sorted(zip(distances, triangles, locations), key=lambda x: x[0], reverse=False)
 
-triangle_nearest = triangles_sorted[0][1]
-location_nearest = triangles_sorted[0][2]
-
+triangle_nearest = intersections_sorted[0][1]
+location_nearest = intersections_sorted[0][2]
 
 print("Location " +str(location_nearest) + " normal direction " + str(mesh.face_normals[triangle_nearest]))
