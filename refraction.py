@@ -1,6 +1,9 @@
 import trimesh
 import numpy as np
 import math
+import matplotlib
+from mpl_toolkits.mplot3d import Axes3D
+import matplotlib.pyplot as plt
 
 def main():
     transform = np.eye(4)
@@ -8,7 +11,12 @@ def main():
     mesh = trimesh.primitives.Box(extents=np.array([1,2,3]), transform=transform)
 
     ray_origin = np.array([[0,0,0]])
-    ray_direction = normalize(np.array([[1,0.1,0]]))
+    ray_direction = normalize(np.array([[1,0.5,0.0]]))
+    ray_origins = []
+    ray_directions = []
+    ray_origins.append(ray_origin)
+    ray_directions.append(ray_direction)
+
 
     ret = mesh.ray.intersects_location(ray_origin, ray_direction)
     triangles, rays, locations = mesh.ray.intersects_id(ray_origin, ray_direction, return_locations=True)
@@ -31,18 +39,53 @@ def main():
     print("Rotation axis: " + str(axis_rotation_norm))
 
 
-    angle_incident = math.acos(np.dot(ray_direction, normal_nearest) / (np.linalg.norm(ray_direction) * np.linalg.norm(normal_nearest)))
+    angle_incident = math.acos(np.dot(ray_direction, -normal_nearest) / (np.linalg.norm(ray_direction) * np.linalg.norm(-normal_nearest)))
     angle = calculate_refraction_angle(angle_incident, 1.0, 1.2)
-    print("Angle 1: " + str(angle_incident*180/np.pi) + " Angle 2: " + str(angle*180/np.pi))
+    angle_diff = angle - angle_incident
+    print("Angle 1: " + str(angle_incident*180/np.pi) + " Angle 2: " + str(angle*180/np.pi) + " Angle delta: " + str(angle_diff*180/np.pi))
 
     # rotation_euler = trimesh.transformations.euler_from_quaternion(trimesh.transformations.quaternion_about_axis(np.pi/4, axis_rotation_norm.T))
-    rotation_mat = trimesh.transformations.rotation_matrix(angle, axis_rotation_norm.T)
-    print(rotation_mat)
-    print("Original direction: " + str(ray_direction) + " Rotated direction: " + str(ray_direction * rotation_mat[0:3,0:3]))
-    print(np.linalg.norm(ray_direction * rotation_mat[0:3,0:3]))
+    rotation_mat = trimesh.transformations.rotation_matrix(angle_diff, axis_rotation_norm.T)
+    print("Rotation mat: ", rotation_mat[0:3,0:3])
+    print("Ray direction: ", ray_direction.T)
+    ray_direction_refracted =  np.dot(rotation_mat[0:3,0:3], ray_direction.T)
+    print("Original direction: " + str(ray_direction) + " Rotated direction: " + str(ray_direction_refracted))
+    print(np.linalg.norm(ray_direction_refracted))
+
+    ray_origins.append(np.array([location_nearest]))
+    ray_directions.append(ray_direction_refracted.T)
+
+    print("origins: ", ray_origins)
+    print("directions: ", ray_directions)
+
+    x = []
+    y = []
+    z = []
+
+    x.append(ray_origins[0][0][0])
+    x.append(ray_origins[1][0][0])
+    x.append(ray_origins[1][0][0] + ray_directions[1][0][0])
+    print(x)
+
+    y.append(ray_origins[0][0][1])
+    y.append(ray_origins[1][0][1])
+    y.append(ray_origins[1][0][1] + ray_directions[1][0][1])
+    print(y)
+
+    z.append(ray_origins[0][0][2])
+    z.append(ray_origins[1][0][2])
+    z.append(ray_origins[1][0][2] + ray_directions[1][0][2])
+    print(z)
+
+    fig = plt.figure()
+    ax = fig.gca(projection='3d')
+    ax.plot(x, y, z)
+    plt.axis('equal')
+    plt.show()
 
 def calculate_refraction_angle(angle_in, index_outer, index_inner):
     angle_out = math.asin((index_outer/index_inner)*math.sin(angle_in))
+    print("Angle out", angle_out)
     return angle_out
 
 def normalize(input):
