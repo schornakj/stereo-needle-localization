@@ -104,21 +104,25 @@ def normalize(input):
 #     return (D+E)*0.5, D, E
 
 class RefractionModeler(object):
-    def __init__(self, camera_a_tform, camera_b_tform, phantom_tform, phantom_dims, phantom_refractive_index):
+    def __init__(self, camera_a_tform, camera_b_tform, phantom_tform, phantom_dims, refractive_index_phantom, refractive_index_ambient):
         self.camera_a_origin = camera_a_tform[0:2,3]
         self.camera_b_origin = camera_b_tform[0:2, 3]
         self.mesh_phantom = trimesh.primitives.Box(extents=phantom_dims, transform=phantom_tform)
-        self.index_refraction = phantom_refractive_index
+        self.refractive_index_phantom = refractive_index_phantom
+        self.refractive_index_ambient = refractive_index_ambient
 
     def solve_real_point_from_refracted(self, point_observed):
         camera_a_direction = self._normalize(point_observed - self.camera_a_origin)
         camera_b_direction = self._normalize(point_observed - self.camera_b_origin)
 
-        location_nearest_a, location_nearest_a = self._get_closest_intersection(self.camera_a_origin, camera_a_direction)
-        location_nearest_b, location_nearest_b = self._get_closest_intersection(self.camera_b_origin, camera_b_direction)
+        location_nearest_a, normal_nearest_a = self._get_closest_intersection(self.camera_a_origin, camera_a_direction)
+        location_nearest_b, normal_nearest_b = self._get_closest_intersection(self.camera_b_origin, camera_b_direction)
 
+        camera_a_direction_refracted = self._get_refracted_direction(camera_a_direction, normal_nearest_a)
+        camera_b_direction_refracted = self._get_refracted_direction(camera_b_direction, normal_nearest_b)
 
-        return 0 # not yet implemented
+        real_point = self._rays_closest_point(location_nearest_a, camera_a_direction_refracted, location_nearest_b, camera_b_direction_refracted)
+        return real_point
 
     def _get_closest_intersection(self, ray_origin, ray_direction):
         triangles, rays, locations = self.mesh_phantom.ray.intersects_id(ray_origin, ray_direction, return_locations=True)
@@ -131,6 +135,17 @@ class RefractionModeler(object):
         location_nearest = intersections_sorted[0][2]
         normal_nearest = self.mesh_phantom.face_normals[triangle_nearest]
         return location_nearest, normal_nearest
+
+    def _get_refracted_direction(self, ray_direction, normal_nearest):
+        axis_rotation = np.cross(ray_direction, normal_nearest)
+        axis_rotation_norm = axis_rotation / np.linalg.norm(axis_rotation)
+        angle_incident = math.acos(
+            np.dot(ray_direction, -normal_nearest) / (np.linalg.norm(ray_direction) * np.linalg.norm(-normal_nearest)))
+        angle = self._calculate_refraction_angle(angle_incident, self.refractive_index_ambient, self.refractive_index_phantom)
+        angle_diff = angle - angle_incident
+        rotation_mat = trimesh.transformations.rotation_matrix(angle_diff, axis_rotation_norm.T)
+        ray_direction_refracted = np.dot(rotation_mat[0:3, 0:3], ray_direction.T)
+        return ray_direction_refracted
 
     def _rays_closest_point(self, ray1_origin, ray1_direction, ray2_origin, ray2_direction):
         # http://morroworks.com/Content/Docs/Rays%20closest%20point.pdf
@@ -151,6 +166,11 @@ class RefractionModeler(object):
 
     def _normalize(self, input):
         return input / np.linalg.norm(input)
+
+    def _calculate_refraction_angle(self, angle_in, index_outer, index_inner):
+        angle_out = math.asin((index_outer / index_inner) * math.sin(angle_in))
+        # print("Angle out", angle_out)
+        return angle_out
 
 
 if __name__ == '__main__':
