@@ -113,9 +113,26 @@ class RefractionModeler(object):
     def solve_real_point_from_refracted(self, point_observed):
         camera_a_direction = self._normalize(point_observed - self.camera_a_origin)
         camera_b_direction = self._normalize(point_observed - self.camera_b_origin)
+
+        location_nearest_a, location_nearest_a = self._get_closest_intersection(self.camera_a_origin, camera_a_direction)
+        location_nearest_b, location_nearest_b = self._get_closest_intersection(self.camera_b_origin, camera_b_direction)
+
+
         return 0 # not yet implemented
 
-    def _rays_closest_point(ray1_origin, ray1_direction, ray2_origin, ray2_direction):
+    def _get_closest_intersection(self, ray_origin, ray_direction):
+        triangles, rays, locations = self.mesh_phantom.ray.intersects_id(ray_origin, ray_direction, return_locations=True)
+        distances = []
+        for i, location in enumerate(locations):
+            distance = np.linalg.norm(location - ray_origin)
+            distances.append(distance)
+        intersections_sorted = sorted(zip(distances, triangles, locations), key=lambda x: x[0], reverse=False)
+        triangle_nearest = intersections_sorted[0][1]
+        location_nearest = intersections_sorted[0][2]
+        normal_nearest = self.mesh_phantom.face_normals[triangle_nearest]
+        return location_nearest, normal_nearest
+
+    def _rays_closest_point(self, ray1_origin, ray1_direction, ray2_origin, ray2_direction):
         # http://morroworks.com/Content/Docs/Rays%20closest%20point.pdf
         c = ray2_origin - ray1_origin
         D = ray1_origin + ray1_direction * ((-np.dot(ray1_direction, ray2_direction) * np.dot(ray2_direction,
