@@ -94,13 +94,45 @@ def calculate_refraction_angle(angle_in, index_outer, index_inner):
 def normalize(input):
     return input/np.linalg.norm(input)
 
-def rays_closest_point(ray1_origin, ray1_direction, ray2_origin, ray2_direction):
-    # http://morroworks.com/Content/Docs/Rays%20closest%20point.pdf
-    c = ray2_origin- ray1_origin
-    D = ray1_origin + ray1_direction*((-np.dot(ray1_direction, ray2_direction)*np.dot(ray2_direction, c) + np.dot(ray1_direction, c)*np.dot(ray2_direction, ray2_direction)) /
-                                      np.dot(ray1_direction, ray1_direction)*np.dot(ray2_direction,ray2_direction) - np.dot(ray1_direction,ray2_direction)*np.dot(ray1_direction,ray2_direction))
-    E = ray2_origin + ray2_direction * ((np.dot(ray1_direction, ray2_direction) * np.dot(ray1_direction, c) - np.dot(ray2_direction, c) * np.dot(ray1_direction, ray1_direction)) /
-                                        np.dot(ray1_direction, ray1_direction) * np.dot(ray2_direction,ray2_direction) - np.dot(ray1_direction, ray2_direction) * np.dot(ray1_direction, ray2_direction))
-    return (D+E)*0.5, D, E
+# def rays_closest_point(ray1_origin, ray1_direction, ray2_origin, ray2_direction):
+#     # http://morroworks.com/Content/Docs/Rays%20closest%20point.pdf
+#     c = ray2_origin- ray1_origin
+#     D = ray1_origin + ray1_direction*((-np.dot(ray1_direction, ray2_direction)*np.dot(ray2_direction, c) + np.dot(ray1_direction, c)*np.dot(ray2_direction, ray2_direction)) /
+#                                       np.dot(ray1_direction, ray1_direction)*np.dot(ray2_direction,ray2_direction) - np.dot(ray1_direction,ray2_direction)*np.dot(ray1_direction,ray2_direction))
+#     E = ray2_origin + ray2_direction * ((np.dot(ray1_direction, ray2_direction) * np.dot(ray1_direction, c) - np.dot(ray2_direction, c) * np.dot(ray1_direction, ray1_direction)) /
+#                                         np.dot(ray1_direction, ray1_direction) * np.dot(ray2_direction,ray2_direction) - np.dot(ray1_direction, ray2_direction) * np.dot(ray1_direction, ray2_direction))
+#     return (D+E)*0.5, D, E
+
+class RefractionModeler(object):
+    def __init__(self, camera_a_tform, camera_b_tform, phantom_tform, phantom_dims, phantom_refractive_index):
+        self.camera_a_origin = camera_a_tform[0:2,3]
+        self.camera_b_origin = camera_b_tform[0:2, 3]
+        self.mesh_phantom = trimesh.primitives.Box(extents=phantom_dims, transform=phantom_tform)
+        self.index_refraction = phantom_refractive_index
+
+    def solve_real_point_from_refracted(self, point_observed):
+        return 0 # not yet implemented
+
+    def _rays_closest_point(ray1_origin, ray1_direction, ray2_origin, ray2_direction):
+        # http://morroworks.com/Content/Docs/Rays%20closest%20point.pdf
+        c = ray2_origin - ray1_origin
+        D = ray1_origin + ray1_direction * ((-np.dot(ray1_direction, ray2_direction) * np.dot(ray2_direction,
+                                                                                              c) + np.dot(
+            ray1_direction, c) * np.dot(ray2_direction, ray2_direction)) /
+                                            np.dot(ray1_direction, ray1_direction) * np.dot(ray2_direction,
+                                                                                            ray2_direction) - np.dot(
+            ray1_direction, ray2_direction) * np.dot(ray1_direction, ray2_direction))
+        E = ray2_origin + ray2_direction * ((
+                                            np.dot(ray1_direction, ray2_direction) * np.dot(ray1_direction, c) - np.dot(
+                                                ray2_direction, c) * np.dot(ray1_direction, ray1_direction)) /
+                                            np.dot(ray1_direction, ray1_direction) * np.dot(ray2_direction,
+                                                                                            ray2_direction) - np.dot(
+            ray1_direction, ray2_direction) * np.dot(ray1_direction, ray2_direction))
+        return (D + E) * 0.5, D, E
+
+    def _normalize(input):
+        return input / np.linalg.norm(input)
+
+
 if __name__ == '__main__':
     main()
