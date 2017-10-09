@@ -83,7 +83,7 @@ def main():
     plt.axis('equal')
     plt.show()
 
-    point = rays_closest_point(np.array([0,0,0]), np.array([1,0,0]), np.array([2,-1,1]), np.array([0,1,0]))
+    point, _ = rays_closest_point(np.array([0,0,0]), np.array([1,0,0]), np.array([-1,-1,0]), np.array([0,1,0]))
     print("Point",point)
 
 def calculate_refraction_angle(angle_in, index_outer, index_inner):
@@ -96,15 +96,11 @@ def normalize(input):
 
 def rays_closest_point(ray1_origin, ray1_direction, ray2_origin, ray2_direction):
     # http://morroworks.com/Content/Docs/Rays%20closest%20point.pdf
-    # print("Ray1 origin", ray1_origin, "Ray1 dir", ray1_direction, "Ray2 origin", ray2_origin, "Ray2 dir", ray2_direction)
     c = ray2_origin- ray1_origin
-    # print("C", c)
     D = ray1_origin + ray1_direction*((-np.dot(ray1_direction, ray2_direction)*np.dot(ray2_direction, c) + np.dot(ray1_direction, c)*np.dot(ray2_direction, ray2_direction)) /
                                       np.dot(ray1_direction, ray1_direction)*np.dot(ray2_direction,ray2_direction) - np.dot(ray1_direction,ray2_direction)*np.dot(ray1_direction,ray2_direction))
-    # print("D", D)
     E = ray2_origin + ray2_direction * ((np.dot(ray1_direction, ray2_direction) * np.dot(ray1_direction, c) - np.dot(ray2_direction, c) * np.dot(ray1_direction, ray1_direction)) /
                                         np.dot(ray1_direction, ray1_direction) * np.dot(ray2_direction,ray2_direction) - np.dot(ray1_direction, ray2_direction) * np.dot(ray1_direction, ray2_direction))
-    # print("E", E)
-    return (D+E)*0.5
+    return (D+E)*0.5, D, E
 if __name__ == '__main__':
     main()
