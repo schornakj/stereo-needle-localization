@@ -111,6 +111,8 @@ class RefractionModeler(object):
         self.index_refraction = phantom_refractive_index
 
     def solve_real_point_from_refracted(self, point_observed):
+        camera_a_direction = self._normalize(point_observed - self.camera_a_origin)
+        camera_b_direction = self._normalize(point_observed - self.camera_b_origin)
         return 0 # not yet implemented
 
     def _rays_closest_point(ray1_origin, ray1_direction, ray2_origin, ray2_direction):
@@ -130,7 +132,7 @@ class RefractionModeler(object):
             ray1_direction, ray2_direction) * np.dot(ray1_direction, ray2_direction))
         return (D + E) * 0.5, D, E
 
-    def _normalize(input):
+    def _normalize(self, input):
         return input / np.linalg.norm(input)
 
 
