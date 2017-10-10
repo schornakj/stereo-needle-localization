@@ -131,6 +131,8 @@ def main():
             corners2 = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
 
             # Find the rotation and translation vectors.
+            print("objp", objp)
+            print("corners2",corners2)
             ret, rvecs, tvecs, inliers = cv2.solvePnPRansac(objp, corners2, mat_left, dist_left)
 
             rmat, _ = cv2.Rodrigues(rvecs)
@@ -140,9 +142,23 @@ def main():
 
             # project 3D points to image plane
             imgpts, jac = cv2.projectPoints(axis, rvecs, tvecs, mat_left, dist_left)
-
             frame_side_markers = draw(frame_side, corners2, imgpts)
             cv2.imshow('frame_side_markers', frame_side_markers)
+
+
+        markers_phantom = find_phantom_markers(frame_side)
+        points_phantom = np.array([[0,0,0],[0,5.16,0],[3.9,0,0], [7.75,0,0]],dtype=np.float32)
+
+        # print("object points",points_phantom)
+        # print("markers",markers_phantom)
+        ret, rvecs_phantom, tvecs_phantom, inliers_phantom = cv2.solvePnPRansac(points_phantom, markers_phantom, mat_left, dist_left)
+        print("rvecs_phantom", rvecs_phantom)
+        print("tvecs_phantom", tvecs_phantom*0.01)
+        # project 3D points to image plane
+        imgpts_phantom, jac = cv2.projectPoints(axis, rvecs_phantom, tvecs_phantom, mat_left, dist_left)
+        frame_side_markers_phantom = draw(frame_side, markers_phantom, imgpts_phantom)
+        cv2.imshow('frame_side_markers_phantom', frame_side_markers_phantom)
+
 
         cv2.imshow('Camera Top', frame_top_markers)
         cv2.imshow('Camera Side', frame_side_markers)
@@ -182,6 +198,33 @@ def draw(img, corners, imgpts):
     img = cv2.line(img, corner, tuple(imgpts[1].ravel()), (0,255,0), 5)
     img = cv2.line(img, corner, tuple(imgpts[2].ravel()), (0,0,255), 5)
     return img
+
+def find_phantom_markers(image):
+    image_hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    segmented = cv2.inRange(image_hsv, np.array([0,0,0]), np.array([180, 255, 80]))
+    cv2.imshow("Seg", segmented)
+    img, contours, hierarchy = cv2.findContours(segmented, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    image_contours = image
+    markers = []
+    if len(contours) > 0:
+        areas = []
+        for i, c in enumerate(contours):
+            area = cv2.contourArea(c)
+            areas.append(area)
+        contours_sorted = sorted(zip(areas, contours), key=lambda x: x[0], reverse=True)
+
+        cv2.drawContours(image_contours, contours, -1, (0, 255, 0), 3)
+        cv2.imshow("Contours", image_contours)
+        # print(contours_sorted)
+
+        for contour in contours:
+            M = cv2.moments(contour)
+            if M['m00'] > 0.0:
+                cx = int(M['m10'] / M['m00'])
+                cy = int(M['m01'] / M['m00'])
+                markers.append([[cx, cy]])
+    return np.array(markers, dtype=np.float32)
+
 
 def yaml_to_mat(input):
     obj = Struct(**input)
