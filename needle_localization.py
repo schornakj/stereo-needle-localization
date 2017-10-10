@@ -14,6 +14,7 @@ import argparse
 import xml.etree.ElementTree as ET
 from collections import deque
 import yaml
+import refraction
 
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
@@ -254,6 +255,13 @@ def main():
                               hue_target, hue_target_range, camera_side_roi_center, camera_side_roi_size,
                               int(root.find("kernel_side").text), "camera_side", verbose=True)
 
+    phantom_dims = np.array([0.25, 0.0579, 0.0579]) # length is actually 0.12675 meters
+    phantom_transform = np.eye(4)
+    phantom_transform[2,3]=0.12
+    camera_a_origin = np.array([0,0,0])
+    camera_b_origin = trans_right
+    compensator = refraction.RefractionModeler(camera_a_origin, np.ravel(camera_b_origin), phantom_dims, phantom_transform, 1.2, 1.0)
+
     print("Hue target: " + str(hue_target) + " Range: " + str(hue_target_range))
     target_top = TargetTracker(hue_target, hue_target_range, None, TARGET_TOP)
     target_side = TargetTracker(hue_target, hue_target_range, None, TARGET_SIDE)
@@ -298,9 +306,15 @@ def main():
         position_tip = triangulator_tip.get_position_3D(tracker_top.position_tip, tracker_side.position_tip)
         position_target = triangulator_target.get_position_3D(target_top.target_coords, target_side.target_coords)
 
+        # position_tip_corrected = compensator.solve_real_point_from_refracted(position_tip)
+        position_target_corrected = np.reshape(compensator.solve_real_point_from_refracted(np.ravel(position_target)),(3,1))
+        compensator.make_plot()
+
+        print("Position target raw", position_target)
+        print("Position target corrected", position_target_corrected)
 
         delta = position_target - position_tip
-        delta_tform = transform_to_robot_coords(delta)
+        # delta_tform = transform_to_robot_coords(delta)
         rotation_tip = np.eye(3)
 
         pose_tip = make_homogeneous_tform(rotation=rotation_tip, translation=position_tip)
@@ -325,7 +339,7 @@ def main():
             # print('Delta tform: ' + str(transform_to_robot_coords(delta)))
             #
             plotter.drawNow(position_tip)
-            trajectory.append(transform_to_robot_coords(delta))
+            trajectory.append(delta)
             # print("Adding point to path")
             top_path.append(tracker_top.position_tip)
             side_path.append(tracker_side.position_tip)
@@ -352,13 +366,13 @@ def main():
         text_color = (0, 255, 0)
         data_frame = np.zeros_like(camera_top_with_marker)
 
-        cv2.putText(data_frame, 'Delta: ' + make_data_string(transform_to_robot_coords(delta)),
+        cv2.putText(data_frame, 'Delta: ' + make_data_string(delta),
                     (10, 50), font, 1, text_color)
 
-        cv2.putText(data_frame, 'Target: ' + make_data_string(transform_to_robot_coords(position_target)),
+        cv2.putText(data_frame, 'Target: ' + make_data_string(position_target),
                     (10, 100), font, 1, text_color)
 
-        cv2.putText(data_frame, 'Tip: ' + make_data_string(transform_to_robot_coords(position_tip)),
+        cv2.putText(data_frame, 'Tip: ' + make_data_string(position_tip),
                     (10, 150), font, 1, text_color)
 
         cv2.putText(data_frame, 'Top  2D: ' + str(tracker_top.position_tip[0]) + ' ' + str(tracker_top.position_tip[1]),
