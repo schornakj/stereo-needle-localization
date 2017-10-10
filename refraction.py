@@ -1,15 +1,14 @@
 import trimesh
 import numpy as np
 import math
-import matplotlib
-from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
 
 def main():
-    transform = np.eye(4)
-    transform[1,3]=0.12
-    print(transform)
-    mesh_phantom = trimesh.primitives.Box(extents=np.array([0.12675,0.0579,0.0579]), transform=transform)
+    phantom_transform = np.eye(4)
+    phantom_transform[1,3]=0.12
+    print(phantom_transform)
+    # mesh_phantom = trimesh.primitives.Box(extents=np.array([0.12675,0.0579,0.0579]), transform=transform)
+    phantom_dims = np.array([0.12675,0.0579,0.0579])
     # mesh_phantom.show()
 
     camera_a_origin = np.array([0,0.12,0.12])
@@ -17,17 +16,17 @@ def main():
 
     point_observed = np.array([0.05,0.12 + 0.025,0-0.025])
 
-    modeler = RefractionModeler(camera_a_origin, camera_b_origin, mesh_phantom, 1.2, 1.0)
+    modeler = RefractionModeler(camera_a_origin, camera_b_origin, phantom_dims, phantom_transform, 1.2, 1.0)
 
     real_point = modeler.solve_real_point_from_refracted(point_observed)
     print("Observed Point", point_observed, "Real Point", real_point)
     modeler.make_plot()
 
 class RefractionModeler(object):
-    def __init__(self, camera_a_origin, camera_b_origin, mesh_phantom, refractive_index_phantom, refractive_index_ambient):
+    def __init__(self, camera_a_origin, camera_b_origin, phantom_mesh_dims, phantom_transform, refractive_index_phantom, refractive_index_ambient):
         self.camera_a_origin = camera_a_origin
         self.camera_b_origin = camera_b_origin
-        self.mesh_phantom = mesh_phantom
+        self.mesh_phantom = trimesh.primitives.Box(extents=phantom_mesh_dims, transform=phantom_transform)
         self.refractive_index_phantom = refractive_index_phantom
         self.refractive_index_ambient = refractive_index_ambient
 
