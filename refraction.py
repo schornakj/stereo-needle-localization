@@ -7,19 +7,21 @@ import matplotlib.pyplot as plt
 
 def main():
     transform = np.eye(4)
-    # transform[3,0]=5
-    mesh_phantom = trimesh.primitives.Box(extents=np.array([15,5,5]), transform=transform)
+    transform[1,3]=0.12
+    print(transform)
+    mesh_phantom = trimesh.primitives.Box(extents=np.array([0.12675,0.0579,0.0579]), transform=transform)
     # mesh_phantom.show()
 
-    camera_a_origin = np.array([0,0,-10])
-    camera_b_origin = np.array([0,10,0])
+    camera_a_origin = np.array([0,0.12,0.12])
+    camera_b_origin = np.array([0,0,0])
 
-    point_observed = np.array([5,0,0])
+    point_observed = np.array([0.05,0.12 + 0.025,0-0.025])
 
-    modeler = RefractionModeler(camera_a_origin, camera_b_origin, mesh_phantom, 1.5, 1.0)
+    modeler = RefractionModeler(camera_a_origin, camera_b_origin, mesh_phantom, 1.2, 1.0)
 
     real_point = modeler.solve_real_point_from_refracted(point_observed)
     print("Observed Point", point_observed, "Real Point", real_point)
+    modeler.make_plot()
 #     ray_origin = np.array([[0,0,0]])
 #     ray_direction = normalize(np.array([[1,0.5,0.0]]))
 #     ray_origins = []
@@ -122,6 +124,10 @@ class RefractionModeler(object):
         self.refractive_index_ambient = refractive_index_ambient
 
     def solve_real_point_from_refracted(self, point_observed):
+        print("Origin A", self.camera_a_origin)
+        print("Origin B", self.camera_b_origin)
+        self.point_observed = point_observed
+
         camera_a_direction = self._normalize(point_observed - self.camera_a_origin)
         camera_b_direction = self._normalize(point_observed - self.camera_b_origin)
 
@@ -143,8 +149,30 @@ class RefractionModeler(object):
         print("New Dir A", camera_a_direction_refracted)
         print("New Dir B", camera_b_direction_refracted)
 
-        real_point = self._rays_closest_point(location_nearest_a, camera_a_direction_refracted, location_nearest_b, camera_b_direction_refracted)
-        return real_point
+        self.real_point, _, _, delta = self._rays_closest_point(location_nearest_a, camera_a_direction_refracted, location_nearest_b, camera_b_direction_refracted)
+        self.lines_a = np.concatenate(([self.camera_a_origin], [location_nearest_a],
+                                 [location_nearest_a + 0.15*camera_a_direction_refracted]), axis=0)
+        self.lines_b = np.concatenate(([self.camera_b_origin], [location_nearest_b],
+                                 [location_nearest_b + 0.15 * camera_b_direction_refracted]), axis=0)
+
+        print("Refraction error", np.linalg.norm(self.real_point - self.point_observed))
+
+        return self.real_point
+
+    def make_plot(self):
+        fig = plt.figure()
+        # ax = fig.gca(projection='3d')
+        ax = fig.add_subplot(111, projection='3d')
+        ax.plot3D(self.lines_a[:, 0], self.lines_a[:, 1], self.lines_a[:, 2])
+        ax.plot3D(self.lines_b[:, 0], self.lines_b[:, 1], self.lines_b[:, 2])
+        ax.scatter(self.camera_a_origin[0], self.camera_a_origin[1], self.camera_a_origin[2])
+        ax.scatter(self.camera_b_origin[0], self.camera_b_origin[1], self.camera_b_origin[2])
+        ax.scatter(self.real_point[0], self.real_point[1], self.real_point[2], 'r')
+        ax.scatter(self.point_observed[0], self.point_observed[1], self.point_observed[2], 'g')
+        plt.axis('equal')
+        plt.xlabel("X")
+        plt.ylabel("Y")
+        plt.show()
 
     def _get_closest_intersection(self, ray_origin, ray_direction):
         # print(np.reshape(ray_origin,(3,1)))
@@ -156,8 +184,10 @@ class RefractionModeler(object):
             distance = np.linalg.norm(location - ray_origin)
             distances.append(distance)
         intersections_sorted = sorted(zip(distances, triangles, locations), key=lambda x: x[0], reverse=False)
+        print("Intersections sorted", intersections_sorted)
         triangle_nearest = intersections_sorted[0][1]
         location_nearest = intersections_sorted[0][2]
+        print("Loc Nearest", location_nearest)
         normal_nearest = self.mesh_phantom.face_normals[triangle_nearest]
         return location_nearest, normal_nearest
 
@@ -179,19 +209,15 @@ class RefractionModeler(object):
     def _rays_closest_point(self, ray1_origin, ray1_direction, ray2_origin, ray2_direction):
         # http://morroworks.com/Content/Docs/Rays%20closest%20point.pdf
         c = ray2_origin - ray1_origin
-        D = ray1_origin + ray1_direction * ((-np.dot(ray1_direction, ray2_direction) * np.dot(ray2_direction,
-                                                                                              c) + np.dot(
-            ray1_direction, c) * np.dot(ray2_direction, ray2_direction)) /
-                                            np.dot(ray1_direction, ray1_direction) * np.dot(ray2_direction,
-                                                                                            ray2_direction) - np.dot(
-            ray1_direction, ray2_direction) * np.dot(ray1_direction, ray2_direction))
-        E = ray2_origin + ray2_direction * ((
-                                            np.dot(ray1_direction, ray2_direction) * np.dot(ray1_direction, c) - np.dot(
-                                                ray2_direction, c) * np.dot(ray1_direction, ray1_direction)) /
-                                            np.dot(ray1_direction, ray1_direction) * np.dot(ray2_direction,
-                                                                                            ray2_direction) - np.dot(
-            ray1_direction, ray2_direction) * np.dot(ray1_direction, ray2_direction))
-        return (D + E) * 0.5, D, E
+        D = ray1_origin + ray1_direction * (-np.dot(ray1_direction, ray2_direction) * np.dot(ray2_direction, c)
+                                             + np.dot(ray1_direction, c) * np.dot(ray2_direction, ray2_direction)) / \
+                          (np.dot(ray1_direction, ray1_direction) * np.dot(ray2_direction, ray2_direction)
+                                            - np.dot(ray1_direction, ray2_direction) * np.dot(ray1_direction, ray2_direction))
+        E = ray2_origin + ray2_direction * (np.dot(ray1_direction, ray2_direction) * np.dot(ray1_direction, c) - np.dot(
+                                                ray2_direction, c) * np.dot(ray1_direction, ray1_direction)) / \
+                          (np.dot(ray1_direction, ray1_direction) * np.dot(ray2_direction,ray2_direction)
+                           - np.dot(ray1_direction, ray2_direction) * np.dot(ray1_direction, ray2_direction))
+        return (D + E) * 0.5, D, E, np.linalg.norm(E-D)
 
     def _normalize(self, input):
         return np.array(input / np.linalg.norm(input))
