@@ -260,7 +260,8 @@ def main():
     phantom_transform[2,3]=0.12
     camera_a_origin = np.array([0,0,0])
     camera_b_origin = trans_right
-    compensator = refraction.RefractionModeler(camera_a_origin, np.ravel(camera_b_origin), phantom_dims, phantom_transform, 1.2, 1.0)
+    compensator_tip = refraction.RefractionModeler(camera_a_origin, np.ravel(camera_b_origin), phantom_dims, phantom_transform, 1.2, 1.0)
+    # compensator_target = refraction.RefractionModeler(camera_a_origin, np.ravel(camera_b_origin), phantom_dims, phantom_transform, 1.2, 1.0)
 
     print("Hue target: " + str(hue_target) + " Range: " + str(hue_target_range))
     target_top = TargetTracker(hue_target, hue_target_range, None, TARGET_TOP)
@@ -306,11 +307,15 @@ def main():
         position_tip = triangulator_tip.get_position_3D(tracker_top.position_tip, tracker_side.position_tip)
         position_target = triangulator_target.get_position_3D(target_top.target_coords, target_side.target_coords)
 
-        success_compensation, position_tip_corrected = compensator.solve_real_point_from_refracted(np.ravel(position_tip))
+        success_compensation, position_tip_corrected = compensator_tip.solve_real_point_from_refracted(np.ravel(position_tip))
         # position_tip_corrected = np.reshape(position_tip_corrected_temp,(3,1))
         # success_compensation, position_target_corrected = np.reshape(compensator.solve_real_point_from_refracted(np.ravel(position_target)),(3,1))
         if success_compensation:
-            compensator.make_plot()
+            compensator_tip.make_plot()
+        #
+        # success_compensation, position_target_corrected = compensator_target.solve_real_point_from_refracted(np.ravel(position_target))
+        # if success_compensation:
+        #     compensator_target.make_plot()
 
         print("Position top raw", position_tip)
         print("Position tip corrected", position_tip_corrected)

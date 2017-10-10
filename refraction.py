@@ -72,7 +72,7 @@ class RefractionModeler(object):
 
         return success, self.real_point
 
-    def make_plot(self, point):
+    def make_plot(self):
         self.ax.clear()
         self.ax.plot3D(self.lines_a[:, 0], self.lines_a[:, 1], self.lines_a[:, 2])
         self.ax.plot3D(self.lines_b[:, 0], self.lines_b[:, 1], self.lines_b[:, 2])
