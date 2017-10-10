@@ -306,12 +306,14 @@ def main():
         position_tip = triangulator_tip.get_position_3D(tracker_top.position_tip, tracker_side.position_tip)
         position_target = triangulator_target.get_position_3D(target_top.target_coords, target_side.target_coords)
 
-        # position_tip_corrected = compensator.solve_real_point_from_refracted(position_tip)
-        position_target_corrected = np.reshape(compensator.solve_real_point_from_refracted(np.ravel(position_target)),(3,1))
-        compensator.make_plot()
+        success_compensation, position_tip_corrected = compensator.solve_real_point_from_refracted(np.ravel(position_tip))
+        # position_tip_corrected = np.reshape(position_tip_corrected_temp,(3,1))
+        # success_compensation, position_target_corrected = np.reshape(compensator.solve_real_point_from_refracted(np.ravel(position_target)),(3,1))
+        if success_compensation:
+            compensator.make_plot()
 
-        print("Position target raw", position_target)
-        print("Position target corrected", position_target_corrected)
+        print("Position top raw", position_tip)
+        print("Position tip corrected", position_tip_corrected)
 
         delta = position_target - position_tip
         # delta_tform = transform_to_robot_coords(delta)
