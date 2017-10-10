@@ -19,7 +19,7 @@ def main():
 
     modeler = RefractionModeler(camera_a_origin, camera_b_origin, phantom_dims, phantom_transform, 1.2, 1.0)
 
-    real_point = modeler.solve_real_point_from_refracted(point_observed)
+    ret, real_point = modeler.solve_real_point_from_refracted(point_observed)
     print("Observed Point", point_observed, "Real Point", real_point)
     modeler.make_plot()
 
@@ -45,30 +45,34 @@ class RefractionModeler(object):
         # print("Dir A",camera_a_direction)
         # print("Dir B",camera_b_direction)
 
-        location_nearest_a, normal_nearest_a = self._get_closest_intersection(self.camera_a_origin, camera_a_direction)
-        location_nearest_b, normal_nearest_b = self._get_closest_intersection(self.camera_b_origin, camera_b_direction)
+        success_a, location_nearest_a, normal_nearest_a = self._get_closest_intersection(self.camera_a_origin, camera_a_direction)
+        success_b, location_nearest_b, normal_nearest_b = self._get_closest_intersection(self.camera_b_origin, camera_b_direction)
+        if not success_a or not success_b:
+            success = False
+            self.real_point = None
+        else:
+            # print("Inter A", location_nearest_a)
+            # print("Inter B", location_nearest_b)
 
-        # print("Inter A", location_nearest_a)
-        # print("Inter B", location_nearest_b)
+            # print("Norm A", normal_nearest_a)
+            # print("Norm B", normal_nearest_b)
 
-        # print("Norm A", normal_nearest_a)
-        # print("Norm B", normal_nearest_b)
+            camera_a_direction_refracted = self._get_refracted_direction(camera_a_direction, normal_nearest_a)
+            camera_b_direction_refracted = self._get_refracted_direction(camera_b_direction, normal_nearest_b)
 
-        camera_a_direction_refracted = self._get_refracted_direction(camera_a_direction, normal_nearest_a)
-        camera_b_direction_refracted = self._get_refracted_direction(camera_b_direction, normal_nearest_b)
+            # print("New Dir A", camera_a_direction_refracted)
+            # print("New Dir B", camera_b_direction_refracted)
 
-        # print("New Dir A", camera_a_direction_refracted)
-        # print("New Dir B", camera_b_direction_refracted)
+            self.real_point, point_a, point_b, delta = self._rays_closest_point(location_nearest_a, camera_a_direction_refracted, location_nearest_b, camera_b_direction_refracted)
+            self.lines_a = np.concatenate(([self.camera_a_origin], [location_nearest_a], [point_a]), axis=0)
+            self.lines_b = np.concatenate(([self.camera_b_origin], [location_nearest_b], [point_b]), axis=0)
 
-        self.real_point, point_a, point_b, delta = self._rays_closest_point(location_nearest_a, camera_a_direction_refracted, location_nearest_b, camera_b_direction_refracted)
-        self.lines_a = np.concatenate(([self.camera_a_origin], [location_nearest_a], [point_a]), axis=0)
-        self.lines_b = np.concatenate(([self.camera_b_origin], [location_nearest_b], [point_b]), axis=0)
+            # print("Refraction error", np.linalg.norm(self.real_point - self.point_observed))
+            success = True
 
-        # print("Refraction error", np.linalg.norm(self.real_point - self.point_observed))
+        return success, self.real_point
 
-        return self.real_point
-
-    def make_plot(self):
+    def make_plot(self, point):
         self.ax.clear()
         self.ax.plot3D(self.lines_a[:, 0], self.lines_a[:, 1], self.lines_a[:, 2])
         self.ax.plot3D(self.lines_b[:, 0], self.lines_b[:, 1], self.lines_b[:, 2])
@@ -88,13 +92,19 @@ class RefractionModeler(object):
         for i, location in enumerate(locations):
             distance = np.linalg.norm(location - ray_origin)
             distances.append(distance)
-        intersections_sorted = sorted(zip(distances, triangles, locations), key=lambda x: x[0], reverse=False)
-        # print("Intersections sorted", intersections_sorted)
-        triangle_nearest = intersections_sorted[0][1]
-        location_nearest = intersections_sorted[0][2]
-        # print("Loc Nearest", location_nearest)
-        normal_nearest = self.mesh_phantom.face_normals[triangle_nearest]
-        return location_nearest, normal_nearest
+        if len(distances) > 0:
+            intersection_found = True
+            intersections_sorted = sorted(zip(distances, triangles, locations), key=lambda x: x[0], reverse=False)
+            # print("Intersections sorted", intersections_sorted)
+            triangle_nearest = intersections_sorted[0][1]
+            location_nearest = intersections_sorted[0][2]
+            # print("Loc Nearest", location_nearest)
+            normal_nearest = self.mesh_phantom.face_normals[triangle_nearest]
+        else:
+            intersection_found = False
+            location_nearest = None
+            normal_nearest = None
+        return intersection_found, location_nearest, normal_nearest
 
     def _get_refracted_direction(self, ray_direction, normal_nearest):
         axis_rotation = np.cross(ray_direction, normal_nearest)
