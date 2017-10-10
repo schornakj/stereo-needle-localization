@@ -30,11 +30,14 @@ class RefractionModeler(object):
         self.mesh_phantom = trimesh.primitives.Box(extents=phantom_mesh_dims, transform=phantom_transform)
         self.refractive_index_phantom = refractive_index_phantom
         self.refractive_index_ambient = refractive_index_ambient
+        self.fig = plt.figure()
+        self.ax = self.fig.add_subplot(111, projection='3d')
 
     def solve_real_point_from_refracted(self, point_observed):
         # print("Origin A", self.camera_a_origin)
         # print("Origin B", self.camera_b_origin)
         self.point_observed = point_observed
+        # print("Point observed", point_observed)
 
         camera_a_direction = self._normalize(point_observed - self.camera_a_origin)
         camera_b_direction = self._normalize(point_observed - self.camera_b_origin)
@@ -57,29 +60,27 @@ class RefractionModeler(object):
         # print("New Dir A", camera_a_direction_refracted)
         # print("New Dir B", camera_b_direction_refracted)
 
-        self.real_point, _, _, delta = self._rays_closest_point(location_nearest_a, camera_a_direction_refracted, location_nearest_b, camera_b_direction_refracted)
-        self.lines_a = np.concatenate(([self.camera_a_origin], [location_nearest_a],
-                                 [location_nearest_a + 0.15*camera_a_direction_refracted]), axis=0)
-        self.lines_b = np.concatenate(([self.camera_b_origin], [location_nearest_b],
-                                 [location_nearest_b + 0.15 * camera_b_direction_refracted]), axis=0)
+        self.real_point, point_a, point_b, delta = self._rays_closest_point(location_nearest_a, camera_a_direction_refracted, location_nearest_b, camera_b_direction_refracted)
+        self.lines_a = np.concatenate(([self.camera_a_origin], [location_nearest_a], [point_a]), axis=0)
+        self.lines_b = np.concatenate(([self.camera_b_origin], [location_nearest_b], [point_b]), axis=0)
 
         # print("Refraction error", np.linalg.norm(self.real_point - self.point_observed))
 
         return self.real_point
 
     def make_plot(self):
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')
-        ax.plot3D(self.lines_a[:, 0], self.lines_a[:, 1], self.lines_a[:, 2])
-        ax.plot3D(self.lines_b[:, 0], self.lines_b[:, 1], self.lines_b[:, 2])
-        ax.scatter(self.camera_a_origin[0], self.camera_a_origin[1], self.camera_a_origin[2])
-        ax.scatter(self.camera_b_origin[0], self.camera_b_origin[1], self.camera_b_origin[2])
-        ax.scatter(self.real_point[0], self.real_point[1], self.real_point[2], 'r')
-        ax.scatter(self.point_observed[0], self.point_observed[1], self.point_observed[2], 'g')
+        self.ax.clear()
+        self.ax.plot3D(self.lines_a[:, 0], self.lines_a[:, 1], self.lines_a[:, 2])
+        self.ax.plot3D(self.lines_b[:, 0], self.lines_b[:, 1], self.lines_b[:, 2])
+        self.ax.scatter(self.camera_a_origin[0], self.camera_a_origin[1], self.camera_a_origin[2])
+        self.ax.scatter(self.camera_b_origin[0], self.camera_b_origin[1], self.camera_b_origin[2])
+        self.ax.scatter(self.real_point[0], self.real_point[1], self.real_point[2], 'r')
+        self.ax.scatter(self.point_observed[0], self.point_observed[1], self.point_observed[2], 'g')
         plt.axis('equal')
         plt.xlabel("X")
         plt.ylabel("Y")
-        plt.show()
+        plt.draw()  # redraw the canvas
+        self.fig.canvas.flush_events()
 
     def _get_closest_intersection(self, ray_origin, ray_direction):
         triangles, rays, locations = self.mesh_phantom.ray.intersects_id(np.reshape(ray_origin,(1,3)), np.reshape(ray_direction,(1,3)), return_locations=True)
